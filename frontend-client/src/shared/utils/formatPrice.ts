@@ -13,4 +13,13 @@ export const formatPrice = (price: number | string): string => {
     currency: 'CNY',
     minimumFractionDigits: 2,
   }).format(yuan);
+};
+
+const NO_CEILING_SENTINEL = 9999999999;
+
+export const formatCeilingPrice = (ceilingPrice: number): string => {
+  if (ceilingPrice >= NO_CEILING_SENTINEL) {
+    return '上不封顶';
+  }
+  return formatPrice(ceilingPrice);
 };  

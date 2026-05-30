@@ -5,7 +5,7 @@ import { useAuctionStatus } from '../hooks/useAuctionStatus';
 import { CountdownTimer } from './CountdownTimer';
 import { PricePanel } from './PricePanel';
 import { BidPanel } from './BidPanel';
-import { formatPrice } from '../../../shared/utils/formatPrice';
+import { formatPrice, formatCeilingPrice } from '../../../shared/utils/formatPrice';
 
 interface AuctionCardProps {
   /** 统一的房间 WebSocket 地址 */
@@ -143,7 +143,7 @@ export const AuctionCard: React.FC<AuctionCardProps> = ({ wsUrl, myUserId }) => 
 
             <div className="ceiling-info">
               <span className="ceiling-label">封顶价：</span>
-              <span className="ceiling-value">{formatPrice(auction.ceiling_price)}</span>
+              <span className="ceiling-value">{formatCeilingPrice(auction.ceiling_price)}</span>
             </div>
 
             {auction.extend_count > 0 && (

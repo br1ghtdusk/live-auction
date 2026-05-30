@@ -1,57 +1,37 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-/**
- * WebSocket 基础消息接口
- * 所有业务消息类型必须继承此接口
- */
 export interface BaseWsMessage {
   type: string;
   data?: any;
 }
 
-/**
- * useWebSocket Hook 配置选项（泛型版本）
- * @template T - 业务消息类型，必须继承 BaseWsMessage
- */
 export interface UseWebSocketOptions<T extends BaseWsMessage> {
-  /** WebSocket 服务器地址 */
   url: string;
-  /** 断线重连延迟时间（毫秒），默认 3000 */
-  reconnectDelay?: number;
-  /** 收到消息时的回调 */
+  initialReconnectDelay?: number;
+  maxReconnectDelay?: number;
+  pingInterval?: number;
+  pongTimeout?: number; // 业务可控传入固定值，不传则内部生成带抖动的值
   onMessage?: (message: T) => void;
-  /** 连接成功时的回调 */
   onConnect?: () => void;
-  /** 连接断开时的回调 */
   onDisconnect?: () => void;
 }
 
-/**
- * useWebSocket Hook 返回类型（泛型版本）
- * @template T - 业务消息类型
- */
 export interface UseWebSocketReturn<T extends BaseWsMessage> {
-  /** WebSocket 连接状态 */
   isConnected: boolean;
-  /** 发送消息，返回是否发送成功 */
   sendMessage: (message: object) => boolean;
-  /** 主动关闭连接 */
   close: () => void;
-  /** 当前消息类型（仅用于类型推导） */
   messageType?: T;
 }
 
-/**
- * WebSocket 自定义 Hook（泛型版本）
- * 提供 WebSocket 连接管理、自动重连、消息处理等功能
- * @template T - 业务消息类型，必须继承 BaseWsMessage
- */
 export const useWebSocket = <T extends BaseWsMessage>(
   options: UseWebSocketOptions<T>
 ): UseWebSocketReturn<T> => {
   const {
     url,
-    reconnectDelay = 3000,
+    initialReconnectDelay = 1000,
+    maxReconnectDelay = 16000,
+    pingInterval = 10000,
+    pongTimeout,
     onMessage,
     onConnect,
     onDisconnect,
@@ -60,8 +40,16 @@ export const useWebSocket = <T extends BaseWsMessage>(
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const pingTimerRef = useRef<number | null>(null);
+  const pongTimeoutTimerRef = useRef<number | null>(null);
+  const currentDelayRef = useRef<number>(initialReconnectDelay);
 
-  /** 使用 ref 存储回调函数，避免 useCallback 依赖变化导致重新连接 */
+  // 修复暗雷 1：利用 useRef 动态生成并固化 pongTimeout，防止因为 Math.random() 导致 Hook 依赖频繁失效
+  const actualPongTimeoutRef = useRef<number>(0);
+  if (actualPongTimeoutRef.current === 0) {
+    actualPongTimeoutRef.current = pongTimeout ?? (3000 + Math.random() * 2000);
+  }
+
   const onMessageRef = useRef<(message: T) => void>(onMessage);
   const onConnectRef = useRef<(() => void) | undefined>(onConnect);
   const onDisconnectRef = useRef<(() => void) | undefined>(onDisconnect);
@@ -72,12 +60,56 @@ export const useWebSocket = <T extends BaseWsMessage>(
     onDisconnectRef.current = onDisconnect;
   });
 
+  const clearPongTimeout = useCallback(() => {
+    if (pongTimeoutTimerRef.current) {
+      clearTimeout(pongTimeoutTimerRef.current);
+      pongTimeoutTimerRef.current = null;
+    }
+  }, []);
+
+  const clearTimers = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    if (pingTimerRef.current) {
+      clearInterval(pingTimerRef.current);
+      pingTimerRef.current = null;
+    }
+    clearPongTimeout();
+  }, [clearPongTimeout]);
+
+  const startHeartbeat = useCallback(() => {
+    if (pingTimerRef.current) {
+      clearInterval(pingTimerRef.current);
+    }
+    pingTimerRef.current = window.setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'ping' }));
+        console.log('[useWebSocket] 发送心跳 ping');
+
+        clearPongTimeout();
+        pongTimeoutTimerRef.current = window.setTimeout(() => {
+          console.error('[useWebSocket] Pong 超时，检测到僵尸连接，主动断开并触发重连');
+          if (wsRef.current) {
+            wsRef.current.close();
+          }
+        }, actualPongTimeoutRef.current); // 👈 使用固化的 Ref 值
+      }
+    }, pingInterval);
+  }, [pingInterval, clearPongTimeout]); // 👈 移除了不稳定的 pongTimeout 依赖
+
+  const resetReconnectDelay = useCallback(() => {
+    currentDelayRef.current = initialReconnectDelay;
+  }, [initialReconnectDelay]);
+
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       return;
     }
 
     if (wsRef.current) {
+      wsRef.current.onclose = null; // 安全清理旧连接的事件
       wsRef.current.close();
     }
 
@@ -88,12 +120,20 @@ export const useWebSocket = <T extends BaseWsMessage>(
     ws.onopen = () => {
       console.log('[useWebSocket] 连接成功');
       setIsConnected(true);
+      resetReconnectDelay();
+      startHeartbeat();
       onConnectRef.current?.();
     };
 
     ws.onmessage = (event) => {
       try {
+        clearPongTimeout();
+
         const message: T = JSON.parse(event.data);
+        if (message.type === 'pong') {
+          console.log('[useWebSocket] 收到心跳 pong，已拦截');
+          return;
+        }
         console.log('[useWebSocket] 收到消息:', message);
         onMessageRef.current?.(message);
       } catch (err) {
@@ -106,16 +146,25 @@ export const useWebSocket = <T extends BaseWsMessage>(
     };
 
     ws.onclose = () => {
-      console.log('[useWebSocket] 连接断开');
+      console.log('[useWebSocket] 连接断开，准备触发自动重连');
       setIsConnected(false);
+      clearTimers();
       onDisconnectRef.current?.();
 
+      const jitter = Math.random() * 200;
+      const delay = currentDelayRef.current + jitter;
+      
       reconnectTimerRef.current = window.setTimeout(() => {
-        console.log('[useWebSocket] 尝试重新连接...');
+        console.log(`[useWebSocket] 尝试重新连接... (延迟: ${Math.round(delay)}ms)`);
         connect();
-      }, reconnectDelay);
+      }, delay);
+
+      currentDelayRef.current = Math.min(
+        currentDelayRef.current * 2,
+        maxReconnectDelay
+      );
     };
-  }, [url, reconnectDelay]);
+  }, [url, maxReconnectDelay, clearTimers, resetReconnectDelay, startHeartbeat, clearPongTimeout]);
 
   const sendMessage = useCallback((message: object): boolean => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -126,17 +175,20 @@ export const useWebSocket = <T extends BaseWsMessage>(
     return true;
   }, []);
 
+  // 修复暗雷 2：主动关闭或销毁时，提前抹除 onclose 回调，防止“回马枪”误触发自动重连
   const close = useCallback(() => {
-    if (reconnectTimerRef.current) {
-      clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
+    clearTimers();
     if (wsRef.current) {
+      console.log('[useWebSocket] 主动关闭连接，解除事件绑定');
+      wsRef.current.onopen = null;
+      wsRef.current.onmessage = null;
+      wsRef.current.onerror = null;
+      wsRef.current.onclose = null; // 👈 核心核心：切断异步重连的导火索！
       wsRef.current.close();
       wsRef.current = null;
     }
     setIsConnected(false);
-  }, []);
+  }, [clearTimers]);
 
   useEffect(() => {
     connect();

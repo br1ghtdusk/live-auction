@@ -48,15 +48,28 @@ async function expire(id, seconds) {
     return await redis.getClient().expire(key, seconds);
 }
 
-async function acquireLock(lockKey, ttlMs = 1000) {
+async function acquireLock(lockKey, requestId, ttlMs = 1000) {
     const client = redis.getClient();
-    const result = await client.setNX(lockKey, Date.now().toString(), 'PX', ttlMs);
-    return result === 1;
+    const result = await client.set(lockKey, requestId, {
+        NX: true,
+        PX: ttlMs
+    });
+    return result === 'OK';
 }
 
-async function releaseLock(lockKey) {
+async function releaseLock(lockKey, requestId) {
     const client = redis.getClient();
-    await client.del(lockKey);
+    const luaScript = `
+        if redis.call('GET', KEYS[1]) == ARGV[1] then
+            return redis.call('DEL', KEYS[1])
+        else
+            return 0
+        end
+    `;
+    await client.eval(luaScript, {
+        keys: [lockKey],
+        args: [requestId]
+    });
 }
 
 module.exports = {

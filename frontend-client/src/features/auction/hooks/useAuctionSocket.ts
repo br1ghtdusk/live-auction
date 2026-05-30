@@ -20,7 +20,7 @@ export const useAuctionSocket = ({ wsUrl, myUserId }: UseAuctionSocketOptions) =
 
   const { isConnected, sendMessage } = useWebSocket<AuctionWebSocketMessage>({
     url: wsUrl,
-    reconnectDelay: 3000,
+    initialReconnectDelay: 3000,
     onConnect: () => {
       setError(null);
     },

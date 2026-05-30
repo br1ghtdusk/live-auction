@@ -28,7 +28,16 @@ function handleConnection(ws, req) {
     logger.info('[WS] 捕捉到新客户端物理连接建立');
 
     const urlParams = new URL(req.url, 'http://localhost').searchParams;
-    const roomId = urlParams.get('roomId') || 'room_1';
+    const roomIdStr = urlParams.get('roomId') || '101';
+    const roomId = parseInt(roomIdStr, 10);
+
+    if (isNaN(roomId) || roomId <= 0) {
+        logger.warn(`[WS] 无效的 roomId 参数: "${roomIdStr}"，拒绝连接`);
+        ws.close(1008, 'Invalid roomId');
+        return;
+    }
+
+    logger.info(`[WS] Successfully connected to room: ${roomId}`);
 
     if (!rooms.has(roomId)) {
         rooms.set(roomId, new Set());

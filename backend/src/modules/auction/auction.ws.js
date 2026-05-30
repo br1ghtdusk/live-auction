@@ -8,8 +8,14 @@ function setAuctionService(service) {
 }
 
 async function handleConnection(ws, roomId) {
+    if (typeof roomId !== 'number' || isNaN(roomId) || roomId <= 0) {
+        logger.error(`[WS Gate] 无效的 roomId: ${roomId}，拒绝处理`);
+        ws.close(1008, 'Invalid roomId');
+        return;
+    }
+
     try {
-        const auction = await auctionService.getAuctionDetail(1);
+        const auction = await auctionService.getActiveAuctionByRoomId(roomId);
         if (auction) {
             ws.send(JSON.stringify({
                 type: 'auction_info',
@@ -24,7 +30,8 @@ async function handleConnection(ws, roomId) {
 async function handleMessage(ws, roomId, data) {
     if (data.action === 'bid') {
         try {
-            await auctionService.placeBid(roomId, 1, data);
+            const auctionId = data.auctionId;
+            await auctionService.placeBid(roomId, auctionId, data);
         } catch (error) {
             logger.error('[WS Gate] 处理出价异常:', error);
             ws.send(JSON.stringify({

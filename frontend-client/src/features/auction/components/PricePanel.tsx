@@ -17,7 +17,7 @@ export const PricePanel: React.FC<PricePanelProps> = React.memo(({
     return (
       <div className="price-section">
         <div className="price-item w-full">
-          <span className="price-label text-gray-400">流拍结果</span>
+          <span className="price-label text-gray-400">拍卖结果</span>
           <span className="price-value text-gray-400 text-lg">
             无人出价，已流拍
           </span>

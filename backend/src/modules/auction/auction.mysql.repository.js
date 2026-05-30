@@ -23,6 +23,7 @@ async function create(data) {
         image_url,
         description,
         start_price,
+        current_price,
         bid_increment,
         ceiling_price,
         scheduled_start_time,
@@ -41,8 +42,9 @@ async function create(data) {
                 version, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-            merchant_id, room_id, name, image_url, description,
-            start_price, start_price, bid_increment, ceiling_price, 'WAITING',
+            merchant_id, room_id, name, image_url, description ?? '',
+            start_price, current_price ?? start_price, bid_increment, ceiling_price,
+            'WAITING',
             scheduled_start_time, scheduled_end_time,
             auto_extend_seconds, extend_trigger_seconds, max_extend_count,
             0, created_at, created_at
@@ -192,7 +194,7 @@ async function cancel(id, status, cancelReason, actualEndTime, updatedAt) {
 }
 
 async function findByMerchantId(merchantId, limit = 20, offset = 0) {
-    const [rows] = await db.getPool().execute(
+    const [rows] = await db.getPool().query(
         `SELECT id, merchant_id, room_id, name, image_url, status,
                 scheduled_start_time, scheduled_end_time, current_price, highest_bidder_id
          FROM auctions
@@ -205,14 +207,16 @@ async function findByMerchantId(merchantId, limit = 20, offset = 0) {
 }
 
 async function findByRoomId(roomId, limit = 20, offset = 0) {
-    const [rows] = await db.getPool().execute(
+    if (roomId === undefined) throw new Error('roomId cannot be undefined');
+
+    const [rows] = await db.getPool().query(
         `SELECT id, merchant_id, room_id, name, image_url, status,
                 scheduled_start_time, scheduled_end_time, current_price, highest_bidder_id
          FROM auctions
          WHERE room_id = ?
          ORDER BY scheduled_start_time DESC
          LIMIT ? OFFSET ?`,
-        [roomId, limit, offset]
+        [Number(roomId), Number(limit), Number(offset)]
     );
     return rows;
 }
@@ -244,6 +248,16 @@ async function createOrder(data) {
     return result.insertId;
 }
 
+async function findActiveAuctions() {
+    const [rows] = await db.getPool().query(
+        `SELECT id, room_id, merchant_id, status, scheduled_end_time
+         FROM auctions
+         WHERE status IN ('WAITING', 'BIDDING')
+         ORDER BY scheduled_end_time ASC`
+    );
+    return rows;
+}
+
 module.exports = {
     findById,
     create,
@@ -258,6 +272,7 @@ module.exports = {
     cancel,
     findByMerchantId,
     findByRoomId,
+    findActiveAuctions,
     insertBidRecord,
     createOrder
 };

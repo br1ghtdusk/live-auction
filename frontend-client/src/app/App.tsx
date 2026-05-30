@@ -4,7 +4,10 @@ import './App.css';
 import '../features/auction/components/AuctionCard.css';
 
 function App() {
-  const WS_URL = 'ws://localhost:8081?roomId=room_1';
+  // 从 URL 参数获取 roomId，默认 101
+  const searchParams = new URLSearchParams(window.location.search);
+  const roomId = searchParams.get('roomId') || '101';
+  const WS_URL = `ws://localhost:8081?roomId=${roomId}`;
   const MY_USER_ID = getStoredUserId();
 
   return (
