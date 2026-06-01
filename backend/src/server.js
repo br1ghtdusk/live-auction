@@ -13,6 +13,62 @@ const logger = require('./utils/logger');
 
 const server = http.createServer(app);
 
+function setupGracefulShutdown(server) {
+    const shutdown = async (signal) => {
+        logger.info(`[Server Master] 收到 ${signal} 信号，开始停机...`);
+
+        const timeout = setTimeout(() => {
+            logger.error('[Server Fatal] 停机超时，强制退出');
+            process.exit(1);
+        }, 10000);
+
+        try {
+            logger.info('[Server Master] 步骤1: 停止调度器...');
+            scheduler.stop();
+
+            logger.info('[Server Master] 步骤2: 主动断开所有 WebSocket 连接...');
+            let clientCount = 0;
+            wss.clients.forEach((client) => {
+                if (client.readyState === client.OPEN) {
+                    clientCount++;
+                    client.send(JSON.stringify({
+                        type: 'system',
+                        message: '系统维护中，连接即将断开，请稍后重试'
+                    }));
+                    client.close(1001, '系统维护');
+                }
+            });
+            logger.info(`[Server Master] 已通知并断开 ${clientCount} 个 WebSocket 客户端`);
+
+            logger.info('[Server Master] 步骤3: 关闭 HTTP 服务器...');
+            await new Promise((resolve) => {
+                server.close(async () => {
+                    logger.info('[Server Master] HTTP 服务器已关闭');
+                    
+                    logger.info('[Server Master] 步骤4: 断开 Redis 连接...');
+                    await redis.disconnect();
+
+                    logger.info('[Server Master] 步骤5: 释放数据库连接池...');
+                    await db.getPool().end();
+
+                    resolve();
+                });
+            });
+
+            clearTimeout(timeout);
+            logger.info('[Server Master] ✅停机完成，服务已安全退出');
+            process.exit(0);
+        } catch (error) {
+            logger.error('[Server Fatal] 停机过程发生错误:', error);
+            clearTimeout(timeout);
+            process.exit(1);
+        }
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+}
+
 async function start() {
     try {
         logger.info('[Server Master] 核心集群系统引导装载程序激活...');
@@ -20,17 +76,24 @@ async function start() {
         db.init();
         await redis.connect();
 
+        logger.info('[Server Master] 步骤1: 初始化 WebSocket 底层网关...');
+        websocketConfig.initWebSocket(server);
+
+        logger.info('[Server Master] 步骤2: 绑定业务处理器...');
         auctionWsHandler.setAuctionService(auctionService);
         auctionWsHandler.init();
 
         auctionEventHandler.setWss(wss);
         auctionEventHandler.init();
 
-        await auctionService.initializeAuctionCache(1);
+        logger.info('[Server Master] 步骤3: 动态预热活跃拍品缓存...');
+        await auctionService.warmUpActiveAuctionsCache();
 
-        websocketConfig.initWebSocket(server);
-
+        logger.info('[Server Master] 步骤4: 启动调度器...');
         scheduler.start();
+
+        logger.info('[Server Master] 步骤5: 注册停机处理器...');
+        setupGracefulShutdown(server);
 
         server.listen(config.port, () => {
             logger.info(`[Server Master] 🚀 直播竞拍大师后端中枢正常起航: http://localhost:${config.port}`);

@@ -3,7 +3,7 @@ import useWebSocket from '../../../hooks/useWebSocket';
 import type { AuctionStatus } from '../constants/auctionStatus';
 import type { Auction } from '../types/auction.types';
 import { sanitizeAuctionData } from '../utils/sanitizeAuction';
-import { getBidRejectedReason } from '../utils/getDisplayStatus';
+import { getBidRejectedReason } from '../utils/getBidRejectedReason';
 import { auctionSocketService } from '../services/auction.socket';
 import type { AuctionWebSocketMessage } from '../types/websocket.types';
 

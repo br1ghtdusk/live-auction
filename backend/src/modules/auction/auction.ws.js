@@ -28,6 +28,11 @@ async function handleConnection(ws, roomId) {
 }
 
 async function handleMessage(ws, roomId, data) {
+    if (data.type && data.type.toLowerCase() === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong' }));
+        return;
+    }
+
     if (data.action === 'bid') {
         try {
             const auctionId = data.auctionId;

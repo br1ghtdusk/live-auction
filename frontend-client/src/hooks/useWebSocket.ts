@@ -10,10 +10,11 @@ export interface UseWebSocketOptions<T extends BaseWsMessage> {
   initialReconnectDelay?: number;
   maxReconnectDelay?: number;
   pingInterval?: number;
-  pongTimeout?: number; // 业务可控传入固定值，不传则内部生成带抖动的值
+  pongTimeout?: number;
   onMessage?: (message: T) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
+  onQueueFlush?: () => void;
 }
 
 export interface UseWebSocketReturn<T extends BaseWsMessage> {
@@ -21,6 +22,7 @@ export interface UseWebSocketReturn<T extends BaseWsMessage> {
   sendMessage: (message: object) => boolean;
   close: () => void;
   messageType?: T;
+  queueSize: number;
 }
 
 export const useWebSocket = <T extends BaseWsMessage>(
@@ -30,21 +32,24 @@ export const useWebSocket = <T extends BaseWsMessage>(
     url,
     initialReconnectDelay = 1000,
     maxReconnectDelay = 16000,
-    pingInterval = 10000,
+    pingInterval = 5000,
     pongTimeout,
     onMessage,
     onConnect,
     onDisconnect,
+    onQueueFlush,
   } = options;
 
   const [isConnected, setIsConnected] = useState(false);
+  const [queueSize, setQueueSize] = useState(0);
+  
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
   const pingTimerRef = useRef<number | null>(null);
   const pongTimeoutTimerRef = useRef<number | null>(null);
   const currentDelayRef = useRef<number>(initialReconnectDelay);
+  const messageQueueRef = useRef<object[]>([]);
 
-  // 修复暗雷 1：利用 useRef 动态生成并固化 pongTimeout，防止因为 Math.random() 导致 Hook 依赖频繁失效
   const actualPongTimeoutRef = useRef<number>(0);
   if (actualPongTimeoutRef.current === 0) {
     actualPongTimeoutRef.current = pongTimeout ?? (3000 + Math.random() * 2000);
@@ -53,11 +58,13 @@ export const useWebSocket = <T extends BaseWsMessage>(
   const onMessageRef = useRef<(message: T) => void>(onMessage);
   const onConnectRef = useRef<(() => void) | undefined>(onConnect);
   const onDisconnectRef = useRef<(() => void) | undefined>(onDisconnect);
+  const onQueueFlushRef = useRef<(() => void) | undefined>(onQueueFlush);
 
   useEffect(() => {
     onMessageRef.current = onMessage;
     onConnectRef.current = onConnect;
     onDisconnectRef.current = onDisconnect;
+    onQueueFlushRef.current = onQueueFlush;
   });
 
   const clearPongTimeout = useCallback(() => {
@@ -79,6 +86,33 @@ export const useWebSocket = <T extends BaseWsMessage>(
     clearPongTimeout();
   }, [clearPongTimeout]);
 
+  const flushMessageQueue = useCallback(() => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const queue = messageQueueRef.current;
+    if (queue.length === 0) {
+      return;
+    }
+
+    console.log(`[useWebSocket] 刷新消息队列，共 ${queue.length} 条消息`);
+    
+    while (queue.length > 0) {
+      const message = queue.shift();
+      if (message) {
+        try {
+          wsRef.current?.send(JSON.stringify(message));
+        } catch (error) {
+          console.error('[useWebSocket] 发送队列消息失败:', error);
+        }
+      }
+    }
+    
+    setQueueSize(0);
+    onQueueFlushRef.current?.();
+  }, []);
+
   const startHeartbeat = useCallback(() => {
     if (pingTimerRef.current) {
       clearInterval(pingTimerRef.current);
@@ -94,10 +128,10 @@ export const useWebSocket = <T extends BaseWsMessage>(
           if (wsRef.current) {
             wsRef.current.close();
           }
-        }, actualPongTimeoutRef.current); // 👈 使用固化的 Ref 值
+        }, actualPongTimeoutRef.current);
       }
     }, pingInterval);
-  }, [pingInterval, clearPongTimeout]); // 👈 移除了不稳定的 pongTimeout 依赖
+  }, [pingInterval, clearPongTimeout]);
 
   const resetReconnectDelay = useCallback(() => {
     currentDelayRef.current = initialReconnectDelay;
@@ -109,7 +143,7 @@ export const useWebSocket = <T extends BaseWsMessage>(
     }
 
     if (wsRef.current) {
-      wsRef.current.onclose = null; // 安全清理旧连接的事件
+      wsRef.current.onclose = null;
       wsRef.current.close();
     }
 
@@ -122,6 +156,9 @@ export const useWebSocket = <T extends BaseWsMessage>(
       setIsConnected(true);
       resetReconnectDelay();
       startHeartbeat();
+      
+      flushMessageQueue();
+      
       onConnectRef.current?.();
     };
 
@@ -164,18 +201,27 @@ export const useWebSocket = <T extends BaseWsMessage>(
         maxReconnectDelay
       );
     };
-  }, [url, maxReconnectDelay, clearTimers, resetReconnectDelay, startHeartbeat, clearPongTimeout]);
+  }, [url, maxReconnectDelay, clearTimers, resetReconnectDelay, startHeartbeat, clearPongTimeout, flushMessageQueue]);
 
   const sendMessage = useCallback((message: object): boolean => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      console.warn('[useWebSocket] WebSocket 未连接，无法发送消息');
+      console.warn('[useWebSocket] WebSocket 未连接，消息已加入队列');
+      messageQueueRef.current.push(message);
+      setQueueSize(messageQueueRef.current.length);
       return false;
     }
-    wsRef.current.send(JSON.stringify(message));
-    return true;
+    
+    try {
+      wsRef.current.send(JSON.stringify(message));
+      return true;
+    } catch (error) {
+      console.error('[useWebSocket] 发送消息失败，已加入队列:', error);
+      messageQueueRef.current.push(message);
+      setQueueSize(messageQueueRef.current.length);
+      return false;
+    }
   }, []);
 
-  // 修复暗雷 2：主动关闭或销毁时，提前抹除 onclose 回调，防止“回马枪”误触发自动重连
   const close = useCallback(() => {
     clearTimers();
     if (wsRef.current) {
@@ -183,7 +229,7 @@ export const useWebSocket = <T extends BaseWsMessage>(
       wsRef.current.onopen = null;
       wsRef.current.onmessage = null;
       wsRef.current.onerror = null;
-      wsRef.current.onclose = null; // 👈 核心核心：切断异步重连的导火索！
+      wsRef.current.onclose = null;
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -201,6 +247,7 @@ export const useWebSocket = <T extends BaseWsMessage>(
     isConnected,
     sendMessage,
     close,
+    queueSize,
   };
 };
 

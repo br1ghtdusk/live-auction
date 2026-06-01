@@ -9,43 +9,19 @@ function validateBid(auction, bidAmount, now) {
     logger.info('[Engine] actual_start_time:', auction.actual_start_time);
     logger.info('[Engine] actual_end_time:', auction.actual_end_time);
 
-    const nowDigits = String(now).length;
-    const startDigits = String(auction.scheduled_start_time).length;
-    const endDigits = String(auction.scheduled_end_time).length;
-    logger.info('[Engine] 时间戳位数 - now:', nowDigits, ', start:', startDigits, ', end:', endDigits);
-
-    if (nowDigits !== startDigits || nowDigits !== endDigits) {
-        logger.warn('[Engine] 时间戳精度不一致!');
+    const statusValidation = validateAuctionStatus(auction.status, auction.scheduled_start_time, auction.scheduled_end_time, now);
+    
+    if (!statusValidation.isValid) {
+        return statusValidation;
     }
 
-    if (now < auction.scheduled_start_time) {
-        const diff = auction.scheduled_start_time - now;
-        logger.info('[Engine] 判定: 拍卖未开始 - 还剩', Math.floor(diff / 1000), '秒');
-        return { isValid: false, reason: 'auction_not_started' };
+    if (auction.status === 'WAITING' && now >= auction.scheduled_start_time) {
+        logger.info('[Engine] 判定: 可以激活拍卖');
+        return { isValid: true, shouldActivate: true };
     }
 
-    if (auction.status === 'WAITING') {
-        logger.info('[Engine] 当前是WAITING状态');
-        if (now >= auction.scheduled_start_time && now < auction.scheduled_end_time) {
-            logger.info('[Engine] 判定: 可以激活拍卖');
-            return { isValid: true, shouldActivate: true };
-        }
-        logger.info('[Engine] 判定: 拍卖未激活');
-        return { isValid: false, reason: 'auction_not_active' };
-    }
-
-    if (auction.status !== 'BIDDING') {
-        logger.info('[Engine] 判定: 状态不是BIDDING');
-        return { isValid: false, reason: 'auction_not_active' };
-    }
-
-    if (now > auction.scheduled_end_time) {
-        const diff = now - auction.scheduled_end_time;
-        logger.info('[Engine] 判定: 拍卖已结束 - 超时', Math.floor(diff / 1000), '秒');
-        return { isValid: false, reason: 'auction_ended' };
-    }
-
-    if (bidAmount > auction.ceiling_price) {
+    const ceilingCheck = checkCeilingTrigger(bidAmount, auction.ceiling_price);
+    if (ceilingCheck.isCeilingTriggered) {
         logger.info('[Engine] 判定: 出价超过封顶价 - 当前价:', auction.current_price, ', 封顶价:', auction.ceiling_price, ', 实际出价:', bidAmount);
         return { isValid: false, reason: 'exceeds_ceiling', requiredMaxBid: auction.ceiling_price };
     }
@@ -79,20 +55,18 @@ function processBid(auction, bidAmount, bidderId, now) {
         newState.actual_start_time = now;
     }
 
-    if (bidAmount >= auction.ceiling_price) {
+    const ceilingResult = checkCeilingTrigger(bidAmount, auction.ceiling_price);
+    if (ceilingResult.isCeilingTriggered) {
         newState.status = 'SOLD';
-        newState.final_price = auction.ceiling_price;
-        newState.current_price = auction.ceiling_price;
+        newState.final_price = ceilingResult.finalPrice;
+        newState.current_price = ceilingResult.finalPrice;
         newState.scheduled_end_time = now;
         return newState;
     }
 
-    const remainingTime = auction.scheduled_end_time - now;
-    if (remainingTime <= auction.extend_trigger_seconds * 1000 &&
-        auction.extend_count < auction.max_extend_count) {
-        newState.scheduled_end_time = auction.scheduled_end_time + auction.auto_extend_seconds * 1000;
-        newState.extend_count = auction.extend_count + 1;
-    }
+    const extensionResult = calculateAntiSniperExtension(auction, now);
+    newState.scheduled_end_time = extensionResult.newEndTime;
+    newState.extend_count = extensionResult.newExtendCount;
 
     return newState;
 }

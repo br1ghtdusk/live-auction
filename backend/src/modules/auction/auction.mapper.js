@@ -1,21 +1,28 @@
+function toTimestamp(value) {
+    if (value instanceof Date) {
+        return value.getTime();
+    }
+    if (!value) {
+        return 0;
+    }
+    const timestamp = new Date(value).getTime();
+    return isNaN(timestamp) ? 0 : timestamp;
+}
+
 function toDomainFromMysql(row) {
     if (!row) return null;
 
-    const scheduledStartTime = row.scheduled_start_time instanceof Date
-        ? row.scheduled_start_time.getTime()
-        : (row.scheduled_start_time ? new Date(row.scheduled_start_time).getTime() : 0);
-
-    const scheduledEndTime = row.scheduled_end_time instanceof Date
-        ? row.scheduled_end_time.getTime()
-        : (row.scheduled_end_time ? new Date(row.scheduled_end_time).getTime() : 0);
-
-    const actualStartTime = row.actual_start_time instanceof Date
-        ? row.actual_start_time.getTime()
-        : (row.actual_start_time ? new Date(row.actual_start_time).getTime() : null);
-
-    const actualEndTime = row.actual_end_time instanceof Date
-        ? row.actual_end_time.getTime()
-        : (row.actual_end_time ? new Date(row.actual_end_time).getTime() : null);
+    const scheduledStartTime = toTimestamp(row.scheduled_start_time);
+    const scheduledEndTime = toTimestamp(row.scheduled_end_time);
+    const actualStartTime = row.actual_start_time ? toTimestamp(row.actual_start_time) : null;
+    const actualEndTime = row.actual_end_time ? toTimestamp(row.actual_end_time) : null;
+    
+    if (scheduledStartTime === 0) {
+        console.warn('[Mapper] scheduled_start_time 转换失败:', row.scheduled_start_time);
+    }
+    if (scheduledEndTime === 0) {
+        console.warn('[Mapper] scheduled_end_time 转换失败:', row.scheduled_end_time);
+    }
 
     return {
         id: Number(row.id),

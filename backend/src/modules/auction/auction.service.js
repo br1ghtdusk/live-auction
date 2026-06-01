@@ -28,6 +28,56 @@ async function initializeAuctionCache(id) {
     }
 }
 
+async function warmUpActiveAuctionsCache() {
+    const BATCH_SIZE = 10;
+
+    try {
+        logger.info('[Service Cache] 开始动态预热所有活跃拍品缓存...');
+
+        const activeAuctions = await mysqlRepo.findActiveAuctions();
+        logger.info(`[Service Cache] 从 MySQL 捞取到 ${activeAuctions.length} 个活跃拍品，将以 ${BATCH_SIZE} 个/批并发预热`);
+
+        let successCount = 0;
+        let failCount = 0;
+
+        for (let i = 0; i < activeAuctions.length; i += BATCH_SIZE) {
+            const batch = activeAuctions.slice(i, i + BATCH_SIZE);
+            
+            const promises = batch.map(async (auction) => {
+                try {
+                    const detail = await mysqlRepo.findById(auction.id);
+                    if (detail) {
+                        const domain = mapper.toDomainFromMysql(detail);
+                        await redisRepo.save(detail.id, domain);
+                        logger.info(`[Service Cache] 成功预热拍品 ${detail.id}: ${detail.name}`);
+                        return { success: true };
+                    }
+                    return { success: false };
+                } catch (error) {
+                    logger.error(`[Service Cache] 预热拍品 ${auction.id} 失败:`, error);
+                    return { success: false };
+                }
+            });
+
+            const results = await Promise.all(promises);
+            results.forEach(result => {
+                if (result.success) {
+                    successCount++;
+                } else {
+                    failCount++;
+                }
+            });
+
+            logger.info(`[Service Cache] 已完成批次 ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(activeAuctions.length / BATCH_SIZE)}`);
+        }
+
+        logger.info(`[Service Cache] 动态预热完成 - 成功: ${successCount}, 失败: ${failCount}`);
+    } catch (error) {
+        logger.error('[Service Cache] 动态预热过程抛出异常:', error);
+        throw error;
+    }
+}
+
 async function getAuctionDetail(id) {
     let auction = await redisRepo.findById(id);
     if (!auction) {
@@ -60,53 +110,148 @@ async function placeBid(roomId, auctionId, data) {
     }
 
     try {
-        let redisData = await redisRepo.findById(auctionId);
-        if (!redisData) {
-            logger.info(`[Service] Redis 缓存未命中，尝试从 MySQL 回源: auctionId=${auctionId}`);
+        let luaResult;
+        try {
+            luaResult = await redisRepo.executeBidLua(auctionId, userId, bidAmount, now);
+        } catch (error) {
+            logger.error(`[Service] Lua 脚本执行失败: auctionId=${auctionId}, userId=${userId}`, error);
+            
+            logger.info(`[Service] 尝试从 MySQL 回源: auctionId=${auctionId}`);
             const mysqlAuction = await mysqlRepo.findById(auctionId);
             if (!mysqlAuction) {
-                throw new Error('Auction not found');
+                eventBus.emit(constants.WS_EVENTS.SERVER_BROADCAST.BID_REJECTED, {
+                    roomId,
+                    userId,
+                    reason: 'auction_not_found'
+                });
+                return { success: false, reason: 'auction_not_found' };
             }
-            redisData = mapper.toDomainFromMysql(mysqlAuction);
+            
+            const redisData = mapper.toDomainFromMysql(mysqlAuction);
             await redisRepo.save(auctionId, redisData);
             logger.info(`[Service] MySQL 回源成功并已预热 Redis 缓存: auctionId=${auctionId}`);
+            
+            luaResult = await redisRepo.executeBidLua(auctionId, userId, bidAmount, now);
         }
 
-        const validation = auctionEngine.validateBid(redisData, bidAmount, now);
-        if (!validation.isValid) {
+        if (!luaResult.success) {
+            logger.warn(`[Service] 出价被拒绝: auctionId=${auctionId}, userId=${userId}, reason=${luaResult.reason}`);
+            if (luaResult.debug) {
+                logger.warn(`[Service] Debug 信息: now=${luaResult.debug.now}, scheduledStartTime=${luaResult.debug.scheduledStartTime}, scheduledEndTime=${luaResult.debug.scheduledEndTime}, status=${luaResult.debug.status}`);
+            }
             eventBus.emit(constants.WS_EVENTS.SERVER_BROADCAST.BID_REJECTED, {
                 roomId,
                 userId,
-                reason: validation.reason,
-                requiredMinBid: validation.requiredMinBid
+                reason: luaResult.reason,
+                requiredMinBid: luaResult.requiredMinBid,
+                requiredMaxBid: luaResult.requiredMaxBid,
+                debug: luaResult.debug
             });
-            return { success: false, reason: validation.reason };
+            return { success: false, reason: luaResult.reason };
         }
 
-        const newState = auctionEngine.processBid(redisData, bidAmount, userId, now);
+        const { is_sold, is_first_activation } = luaResult;
 
-        const fieldsToUpdate = {
-            current_price: newState.current_price,
-            highest_bidder_id: newState.highest_bidder_id,
-            scheduled_end_time: newState.scheduled_end_time,
-            extend_count: newState.extend_count,
-            status: newState.status,
-            version: newState.version
-        };
-
-        const isFirstActivation = redisData.status === constants.AUCTION_STATUS.WAITING;
-
-        if (newState.actual_start_time) {
-            fieldsToUpdate.actual_start_time = newState.actual_start_time;
+        const updatedAuction = await redisRepo.findById(auctionId);
+        if (!updatedAuction) {
+            logger.error(`[Service] Lua 执行成功后无法获取更新后的拍卖数据: auctionId=${auctionId}`);
+            return { success: false, reason: 'internal_error' };
         }
 
-        await redisRepo.setFields(auctionId, fieldsToUpdate);
+        async function syncToMySQL() {
+            const updatedAt = time.formatTimeForMySQL(now);
+            
+            try {
+                const mysqlAuction = await mysqlRepo.findById(auctionId);
+                if (!mysqlAuction) {
+                    logger.error(`[Service] MySQL 同步失败，商品不存在: auctionId=${auctionId}`);
+                    return;
+                }
 
-        if (newState.status === 'SOLD') {
-            return await handleAuctionSold(roomId, auctionId, newState, userId, now);
+                const version = mysqlAuction.version;
+                const currentPrice = updatedAuction.current_price;
+                const highestBidderId = updatedAuction.highest_bidder_id;
+                const scheduledEndTime = updatedAuction.scheduled_end_time;
+
+                if (is_sold) {
+                    const actualEndTime = time.formatTimeForMySQL(now);
+                    await mysqlRepo.updateSettledWithLock(
+                        auctionId,
+                        constants.AUCTION_STATUS.SOLD,
+                        currentPrice,
+                        highestBidderId,
+                        actualEndTime,
+                        version,
+                        updatedAt
+                    );
+
+                    await createOrderForAuction(auctionId, mysqlAuction.merchant_id, highestBidderId, currentPrice, updatedAt);
+                } else if (is_first_activation) {
+                    const actualStartTime = time.formatTimeForMySQL(now);
+                    const formattedScheduledEndTime = time.formatTimeForMySQL(scheduledEndTime);
+                    await mysqlRepo.activateWithLock(
+                        auctionId,
+                        constants.AUCTION_STATUS.BIDDING,
+                        actualStartTime,
+                        formattedScheduledEndTime,
+                        version,
+                        updatedAt
+                    );
+                } else {
+                    await mysqlRepo.updateStatusAndPriceWithLock(
+                        auctionId,
+                        constants.AUCTION_STATUS.BIDDING,
+                        currentPrice,
+                        highestBidderId,
+                        version,
+                        updatedAt
+                    );
+                }
+
+                mysqlRepo.insertBidRecord(
+                    auctionId,
+                    userId,
+                    currentPrice,
+                    true,
+                    updatedAt
+                ).catch(err => logger.error('[Service] MySQL insert bid record failed:', err));
+
+                logger.info(`[Service] MySQL 同步完成: auctionId=${auctionId}, price=${currentPrice}`);
+            } catch (syncError) {
+                logger.error(`[Service] MySQL 同步异常: auctionId=${auctionId}`, syncError);
+            }
         }
 
-        return await handleNormalBid(roomId, auctionId, newState, userId, now, isFirstActivation);
+        syncToMySQL().catch(err => logger.error('[Service] MySQL 异步同步失败:', err));
+
+        if (is_sold) {
+            const TTL_SECONDS = 86400;
+            await redisRepo.expire(auctionId, TTL_SECONDS);
+            logger.info(`[Service] 已为一口价成交商品 ${auctionId} 设置 TTL 过期时间: ${TTL_SECONDS} 秒 (24小时)`);
+            
+            eventBus.emit(constants.WS_EVENTS.SERVER_BROADCAST.AUCTION_ENDED, {
+                roomId,
+                winnerId: updatedAuction.highest_bidder_id,
+                finalPrice: updatedAuction.current_price,
+                status: 'sold'
+            });
+            return { success: true, type: 'auction_ended', winnerId: updatedAuction.highest_bidder_id, finalPrice: updatedAuction.current_price };
+        }
+
+        eventBus.emit(constants.WS_EVENTS.SERVER_BROADCAST.PRICE_CHANGED, {
+            roomId,
+            currentPrice: updatedAuction.current_price,
+            highestBidderId: updatedAuction.highest_bidder_id,
+            endTime: updatedAuction.scheduled_end_time,
+            extendCount: updatedAuction.extend_count,
+            status: updatedAuction.status,
+            scheduled_start_time: updatedAuction.scheduled_start_time,
+            start_price: updatedAuction.start_price,
+            bid_increment: updatedAuction.bid_increment,
+            ceiling_price: updatedAuction.ceiling_price
+        });
+
+        return { success: true, type: 'price_update' };
     } finally {
         await redisRepo.releaseLock(`${lockKey}:${userId}`, requestId);
     }
@@ -314,6 +459,10 @@ async function checkAndSettleAuctions() {
                     logger.info(`[Heartbeat] 清算落盘完结: auctionId=${auctionId}，roomId=${roomId}，归属状态 -> ${newState.status}`);
 
                     await redisRepo.save(auctionId, newState);
+                    
+                    const TTL_SECONDS = 86400;
+                    await redisRepo.expire(auctionId, TTL_SECONDS);
+                    logger.info(`[Heartbeat] 已为结算商品 ${auctionId} 设置 TTL 过期时间: ${TTL_SECONDS} 秒 (24小时)`);
 
                     eventBus.emit(constants.WS_EVENTS.SERVER_BROADCAST.AUCTION_ENDED, {
                         roomId: roomId,
@@ -381,6 +530,7 @@ async function getActiveAuctionByRoomId(roomId) {
 
 module.exports = {
     initializeAuctionCache,
+    warmUpActiveAuctionsCache,
     getAuctionDetail,
     placeBid,
     checkAndSettleAuctions,
