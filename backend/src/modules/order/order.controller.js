@@ -22,6 +22,7 @@ async function getMerchantOrders(req, res) {
         const orders = await orderService.getMerchantOrders(parsedMerchantId);
 
         return res.json({
+            code: 200,
             success: true,
             data: orders,
             total: orders.length

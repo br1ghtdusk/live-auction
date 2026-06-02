@@ -148,6 +148,20 @@ async function remove(id) {
     return await redis.getClient().del(key);
 }
 
+async function removeAuctionKeys(id) {
+    const client = redis.getClient();
+    const keys = [
+        constants.REDIS_KEYS.getDetailKey(id),
+        constants.REDIS_KEYS.getBidsZSetKey(id),
+        constants.REDIS_KEYS.getBidLockKey(id),
+        constants.REDIS_KEYS.getHighestBidKey(id)
+    ];
+    if (keys.length > 0) {
+        await client.del(keys);
+    }
+    return keys.length;
+}
+
 async function expire(id, seconds) {
     const key = constants.REDIS_KEYS.getDetailKey(id);
     return await redis.getClient().expire(key, seconds);
@@ -197,6 +211,7 @@ module.exports = {
     setField,
     setFields,
     remove,
+    removeAuctionKeys,
     expire,
     acquireLock,
     releaseLock,

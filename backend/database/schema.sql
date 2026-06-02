@@ -77,10 +77,6 @@ CREATE TABLE IF NOT EXISTS `bid_records` (
     `auction_id` BIGINT UNSIGNED NOT NULL COMMENT '竞拍商品ID',
     `user_id` BIGINT UNSIGNED NOT NULL COMMENT '用户ID',
     `bid_amount` BIGINT NOT NULL COMMENT '出价金额（分）',
-    
-    -- 保留此字段用于异步离线统计或UI展示，严禁在高并发事务中依赖它进行业务校验
-    `is_winning_bid` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否为领先出价',
-    
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '出价时间',
 
     PRIMARY KEY (`id`),
@@ -88,9 +84,6 @@ CREATE TABLE IF NOT EXISTS `bid_records` (
     INDEX `idx_user_id` (`user_id`),
     INDEX `idx_created_at` (`created_at`),
     INDEX `idx_auction_created_at` (`auction_id`, `created_at` DESC)
-    
-
-
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='出价记录流水表';
 
 

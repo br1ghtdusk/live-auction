@@ -28,45 +28,101 @@ function setupGracefulShutdown(server) {
 
             logger.info('[Server Master] 步骤2: 主动断开所有 WebSocket 连接...');
             let clientCount = 0;
-            wss.clients.forEach((client) => {
-                if (client.readyState === client.OPEN) {
-                    clientCount++;
-                    client.send(JSON.stringify({
-                        type: 'system',
-                        message: '系统维护中，连接即将断开，请稍后重试'
-                    }));
-                    client.close(1001, '系统维护');
-                }
-            });
+            const wssInstance = wss.getWssInstance();
+            if (wssInstance?.clients) {
+                wssInstance.clients.forEach((client) => {
+                    if (client.readyState === client.OPEN) {
+                        clientCount++;
+                        try {
+                            client.send(JSON.stringify({
+                                type: 'system',
+                                message: '系统维护中，连接即将断开，请稍后重试'
+                            }));
+                            client.close(1001, '系统维护');
+                        } catch (wsError) {
+                            logger.warn(`[Server Master] 断开客户端连接时发生错误: ${wsError.message}`);
+                        }
+                    }
+                });
+            }
             logger.info(`[Server Master] 已通知并断开 ${clientCount} 个 WebSocket 客户端`);
 
-            logger.info('[Server Master] 步骤3: 关闭 HTTP 服务器...');
-            await new Promise((resolve) => {
-                server.close(async () => {
+            logger.info('[Server Master] 步骤3: 关闭 WebSocket 服务器实例...');
+            if (wssInstance) {
+                await new Promise((resolve) => {
+                    wssInstance.close((err) => {
+                        if (err) {
+                            logger.warn('[Server Master] 关闭 WebSocket 服务器时发生错误:', err);
+                        } else {
+                            logger.info('[Server Master] WebSocket 服务器已关闭');
+                        }
+                        resolve();
+                    });
+                });
+            }
+
+            logger.info('[Server Master] 步骤4: 关闭 HTTP 服务器...');
+            await new Promise((resolve, reject) => {
+                server.close((err) => {
+                    if (err) {
+                        logger.error('[Server Master] 关闭 HTTP 服务器时发生错误:', err);
+                        return reject(err);
+                    }
                     logger.info('[Server Master] HTTP 服务器已关闭');
-                    
-                    logger.info('[Server Master] 步骤4: 断开 Redis 连接...');
-                    await redis.disconnect();
-
-                    logger.info('[Server Master] 步骤5: 释放数据库连接池...');
-                    await db.getPool().end();
-
                     resolve();
                 });
             });
 
+            logger.info('[Server Master] 步骤5: 断开 Redis 连接...');
+            await redis.disconnect().catch((err) => {
+                logger.warn('[Server Master] 断开 Redis 连接时发生错误:', err);
+            });
+
+            logger.info('[Server Master] 步骤6: 释放数据库连接池...');
+            await db.getPool().end().catch((err) => {
+                logger.warn('[Server Master] 释放数据库连接池时发生错误:', err);
+            });
+
             clearTimeout(timeout);
-            logger.info('[Server Master] ✅停机完成，服务已安全退出');
-            process.exit(0);
+            logger.info('[Server Master] ✅停机完成，资源清理完成');
         } catch (error) {
             logger.error('[Server Fatal] 停机过程发生错误:', error);
             clearTimeout(timeout);
-            process.exit(1);
+            throw error;
         }
     };
 
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.once('SIGUSR2', async () => {
+        logger.info('[Server Master] 收到 Nodemon 重启信号 (SIGUSR2)...');
+        try {
+            await shutdown('SIGUSR2');
+            logger.info('[Server Master] 资源清理完成，通知 Nodemon 继续重启...');
+            process.kill(process.pid, 'SIGUSR2');
+        } catch (error) {
+            logger.error('[Server Fatal] Nodemon 重启时发生错误:', error);
+            process.exit(1);
+        }
+    });
+
+    process.on('SIGTERM', async () => {
+        try {
+            await shutdown('SIGTERM');
+            process.exit(0);
+        } catch (error) {
+            logger.error('[Server Fatal] SIGTERM 停机时发生错误:', error);
+            process.exit(1);
+        }
+    });
+
+    process.on('SIGINT', async () => {
+        try {
+            await shutdown('SIGINT');
+            process.exit(0);
+        } catch (error) {
+            logger.error('[Server Fatal] SIGINT 停机时发生错误:', error);
+            process.exit(1);
+        }
+    });
 }
 
 async function start() {

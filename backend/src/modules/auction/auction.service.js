@@ -8,12 +8,10 @@ const settlementEngine = require('../../engines/settlement-engine.js');
 const logger = require('../../utils/logger.js');
 const time = require('../../utils/time.js');
 
-const MAX_RETRY_ATTEMPTS = 3;
-
 async function initializeAuctionCache(id) {
     try {
-        await redisRepo.flushAll();
-        logger.info('[Service Cache] 高并发前置全量同步，已强制洗刷 Redis 缓存区');
+        await redisRepo.removeAuctionKeys(id);
+        logger.info(`[Service Cache] 已清除拍品 ${id} 相关的 Redis 缓存`);
 
         const auction = await mysqlRepo.findById(id);
         if (auction) {
@@ -212,7 +210,6 @@ async function placeBid(roomId, auctionId, data) {
                     auctionId,
                     userId,
                     currentPrice,
-                    true,
                     updatedAt
                 ).catch(err => logger.error('[Service] MySQL insert bid record failed:', err));
 
@@ -255,120 +252,6 @@ async function placeBid(roomId, auctionId, data) {
     } finally {
         await redisRepo.releaseLock(`${lockKey}:${userId}`, requestId);
     }
-}
-
-async function handleAuctionSold(roomId, auctionId, newState, userId, now) {
-    const updatedAt = time.formatTimeForMySQL(now);
-    const actualEndTime = time.formatTimeForMySQL(now);
-
-    await redisRepo.setFields(auctionId, {
-        final_price: newState.final_price,
-        actual_end_time: now
-    });
-
-    const mysqlAuction = await mysqlRepo.findById(auctionId);
-    const version = mysqlAuction ? mysqlAuction.version : 0;
-
-    const affected = await mysqlRepo.updateSettledWithLock(
-        auctionId,
-        constants.AUCTION_STATUS.SOLD,
-        newState.final_price,
-        userId,
-        actualEndTime,
-        version,
-        updatedAt
-    );
-
-    if (affected === 0) {
-        throw new Error('Concurrent modification detected, please retry');
-    }
-
-    mysqlRepo.insertBidRecord(
-        auctionId,
-        userId,
-        newState.final_price,
-        true,
-        updatedAt
-    ).catch(err => logger.error('[Service] MySQL insert bid record failed:', err));
-
-    await createOrderForAuction(auctionId, mysqlAuction.merchant_id, userId, newState.final_price, updatedAt);
-
-    eventBus.emit(constants.WS_EVENTS.SERVER_BROADCAST.AUCTION_ENDED, {
-        roomId,
-        winnerId: userId,
-        finalPrice: newState.final_price,
-        status: 'sold'
-    });
-
-    return { success: true, type: 'auction_ended', winnerId: userId, finalPrice: newState.final_price };
-}
-
-async function handleNormalBid(roomId, auctionId, newState, userId, now, isFirstActivation = false) {
-    const updatedAt = time.formatTimeForMySQL(now);
-    const createdAt = updatedAt;
-    const actualStartTime = newState.actual_start_time
-        ? time.formatTimeForMySQL(newState.actual_start_time)
-        : null;
-    const scheduledEndTime = time.formatTimeForMySQL(newState.scheduled_end_time);
-
-    let success = false;
-    let attempt = 0;
-
-    while (!success && attempt < MAX_RETRY_ATTEMPTS) {
-        attempt++;
-
-        const mysqlAuction = await mysqlRepo.findById(auctionId);
-        const version = mysqlAuction ? mysqlAuction.version : 0;
-
-        let affected;
-        if (isFirstActivation) {
-            affected = await mysqlRepo.activateWithLock(
-                auctionId,
-                constants.AUCTION_STATUS.BIDDING,
-                actualStartTime,
-                scheduledEndTime,
-                version,
-                updatedAt
-            );
-        } else {
-            affected = await mysqlRepo.updateStatusAndPriceWithLock(
-                auctionId,
-                constants.AUCTION_STATUS.BIDDING,
-                newState.current_price,
-                userId,
-                version,
-                updatedAt
-            );
-        }
-
-        if (affected > 0) {
-            success = true;
-        } else {
-            logger.warn(`[Service] Optimistic lock failed, attempt ${attempt}/${MAX_RETRY_ATTEMPTS}`);
-            if (attempt >= MAX_RETRY_ATTEMPTS) {
-                throw new Error('Concurrent modification detected, please retry');
-            }
-            await new Promise(resolve => setTimeout(resolve, 50 * attempt));
-        }
-    }
-
-    mysqlRepo.insertBidRecord(
-        auctionId,
-        userId,
-        newState.current_price,
-        true,
-        createdAt
-    ).catch(err => logger.error('[Service] MySQL insert bid record failed:', err));
-
-    eventBus.emit(constants.WS_EVENTS.SERVER_BROADCAST.PRICE_CHANGED, {
-        roomId,
-        currentPrice: newState.current_price,
-        highestBidderId: userId,
-        endTime: newState.scheduled_end_time,
-        extendCount: newState.extend_count
-    });
-
-    return { success: true, type: 'price_update' };
 }
 
 async function createOrderForAuction(auctionId, merchantId, winnerId, finalPrice, createdAt) {
@@ -495,10 +378,11 @@ async function createAuction(payload) {
         autoExtendSeconds,
         maxExtendCount,
         roomId,  // 新增 roomId 接收
+        merchantId,  // 新增 merchantId 接收
     } = payload;
 
     const auctionData = {
-        merchant_id: 1,
+        merchant_id: parseInt(merchantId, 10) || 1001,
         room_id: roomId ?? 101,  // 透传 roomId，默认 101
         name,
         description: description || '',
@@ -528,6 +412,21 @@ async function getActiveAuctionByRoomId(roomId) {
     return await mysqlRepo.findById(auctions[0].id);
 }
 
+async function getAuctionsByMerchantId(merchantId) {
+    // 查询指定商家的所有拍品
+    const auctions = await mysqlRepo.findByMerchantId(merchantId);
+    return auctions.map(auction => ({
+        id: auction.id,
+        name: auction.name,
+        imageUrl: auction.image_url || null,
+        startPrice: auction.start_price,
+        currentPrice: auction.current_price,
+        status: auction.status,
+        scheduledStartTime: auction.scheduled_start_time,
+        scheduledEndTime: auction.scheduled_end_time,
+    }));
+}
+
 module.exports = {
     initializeAuctionCache,
     warmUpActiveAuctionsCache,
@@ -535,5 +434,6 @@ module.exports = {
     placeBid,
     checkAndSettleAuctions,
     createAuction,
-    getActiveAuctionByRoomId
+    getActiveAuctionByRoomId,
+    getAuctionsByMerchantId
 };

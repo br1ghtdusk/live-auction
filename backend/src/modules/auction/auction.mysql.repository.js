@@ -119,8 +119,8 @@ async function updateStatusAndPriceWithLock(id, status, currentPrice, highestBid
         `UPDATE auctions
          SET status = ?, current_price = ?, highest_bidder_id = ?,
              version = version + 1, updated_at = ?
-         WHERE id = ? AND version = ?`,
-        [status, currentPrice, highestBidderId, updatedAt, id, version]
+         WHERE id = ? AND version < ?`,
+        [status, currentPrice, highestBidderId, updatedAt, id, version + 1]
     );
     return result.affectedRows;
 }
@@ -142,8 +142,8 @@ async function updateSettledWithLock(id, status, finalPrice, highestBidderId, ac
          SET status = ?, final_price = ?, current_price = ?,
              highest_bidder_id = ?, actual_end_time = ?,
              version = version + 1, updated_at = ?
-         WHERE id = ? AND version = ?`,
-        [status, finalPrice, finalPrice, highestBidderId, actualEndTime, updatedAt, id, version]
+         WHERE id = ? AND version < ?`,
+        [status, finalPrice, finalPrice, highestBidderId, actualEndTime, updatedAt, id, version + 1]
     );
     return result.affectedRows;
 }
@@ -176,8 +176,8 @@ async function activateWithLock(id, status, actualStartTime, scheduledEndTime, v
         `UPDATE auctions
          SET status = ?, actual_start_time = ?, scheduled_end_time = ?,
              version = version + 1, updated_at = ?
-         WHERE id = ? AND version = ?`,
-        [status, actualStartTime, scheduledEndTime, updatedAt, id, version]
+         WHERE id = ? AND version < ?`,
+        [status, actualStartTime, scheduledEndTime, updatedAt, id, version + 1]
     );
     return result.affectedRows;
 }
@@ -196,7 +196,7 @@ async function cancel(id, status, cancelReason, actualEndTime, updatedAt) {
 async function findByMerchantId(merchantId, limit = 20, offset = 0) {
     const [rows] = await db.getPool().query(
         `SELECT id, merchant_id, room_id, name, image_url, status,
-                scheduled_start_time, scheduled_end_time, current_price, highest_bidder_id
+                start_price, scheduled_start_time, scheduled_end_time, current_price, highest_bidder_id
          FROM auctions
          WHERE merchant_id = ?
          ORDER BY scheduled_start_time DESC
@@ -221,11 +221,11 @@ async function findByRoomId(roomId, limit = 20, offset = 0) {
     return rows;
 }
 
-async function insertBidRecord(auctionId, userId, bidAmount, isWinningBid, createdAt) {
+async function insertBidRecord(auctionId, userId, bidAmount, createdAt) {
     const [result] = await db.getPool().execute(
-        `INSERT INTO bid_records (auction_id, user_id, bid_amount, is_winning_bid, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-        [auctionId, userId, bidAmount, isWinningBid ? 1 : 0, createdAt]
+        `INSERT INTO bid_records (auction_id, user_id, bid_amount, created_at)
+         VALUES (?, ?, ?, ?)`,
+        [auctionId, userId, bidAmount, createdAt]
     );
     return result.insertId;
 }
