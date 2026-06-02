@@ -19,10 +19,6 @@ const request: AxiosInstance = axios.create({
 
 request.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('admin_token');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
     return config;
   },
   (error: AxiosError) => {
@@ -47,14 +43,6 @@ request.interceptors.response.use(
     const serverMsg = error.response?.data?.message;
 
     switch (status) {
-      case 401:
-        message.error('登录已过期，请重新登录');
-        localStorage.removeItem('admin_token');
-        window.location.href = '/login';
-        break;
-      case 403:
-        message.error('无权限访问该资源');
-        break;
       case 500:
         message.error(serverMsg || '服务器内部错误，请联系管理员');
         break;

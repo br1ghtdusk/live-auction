@@ -13,21 +13,16 @@ export type AppRoute = RouteObject & {
 
 export const routes: AppRoute[] = [
   {
-    path: '/login',
-    meta: { title: '登录' },
-  },
-  {
     path: '/',
     meta: { requiresAuth: true },
     children: [
       {
-        index: true,
-        path: '/dashboard',
-        meta: { title: '数据大盘' },
+        path: '/auction/console',
+        meta: { title: '竞拍控制台' },
       },
       {
-        path: '/auction',
-        meta: { title: '拍卖控制台' },
+        path: '/auction/create',
+        meta: { title: '发布拍品' },
       },
       {
         path: '/auction/list',

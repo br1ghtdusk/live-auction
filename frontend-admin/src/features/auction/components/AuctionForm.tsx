@@ -63,6 +63,8 @@ const AuctionForm: React.FC = () => {
 
       const scheduledEndTime = scheduledStartTime + values.duration * 1000;
 
+      const merchantId = localStorage.getItem('merchantId') || '1001';
+
       const payload = {
         name: values.name,
         imageUrl: values.imageUrl || '',
@@ -77,6 +79,7 @@ const AuctionForm: React.FC = () => {
         autoExtendSeconds: values.autoExtendSeconds,
         maxExtendCount: values.maxExtendCount,
         roomId: values.roomId,  // 新增 roomId
+        merchantId,  // 新增商家 ID
       };
 
       console.log('[AuctionForm] 提交数据:', payload);

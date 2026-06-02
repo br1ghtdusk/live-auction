@@ -1,38 +1,26 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import AdminLayout from '../layouts/AdminLayout';
-import AuthLayout from '../layouts/AuthLayout';
-import LoginPage from '../features/auth/pages/LoginPage';
-import DashboardPage from '../features/dashboard/pages/DashboardPage';
 import AuctionListPage from '../features/auction/pages/AuctionListPage';
 import AuctionConsolePage from '../features/auction/pages/AuctionConsolePage';
+import AuctionCreatePage from '../features/auction/pages/AuctionCreatePage';
 import OrderListPage from '../features/order/pages/OrderListPage';
 
 const router = createBrowserRouter([
-  {
-    path: '/login',
-    element: <AuthLayout />,
-    children: [
-      {
-        index: true,
-        element: <LoginPage />,
-      },
-    ],
-  },
   {
     path: '/',
     element: <AdminLayout />,
     children: [
       {
         index: true,
-        element: <Navigate to="/dashboard" replace />,
+        element: <Navigate to="/auction/console" replace />,
       },
       {
-        path: 'dashboard',
-        element: <DashboardPage />,
-      },
-      {
-        path: 'auction',
+        path: 'auction/console',
         element: <AuctionConsolePage />,
+      },
+      {
+        path: 'auction/create',
+        element: <AuctionCreatePage />,
       },
       {
         path: 'auction/list',
@@ -46,7 +34,7 @@ const router = createBrowserRouter([
   },
   {
     path: '*',
-    element: <Navigate to="/dashboard" replace />,
+    element: <Navigate to="/auction/console" replace />,
   },
 ]);
 

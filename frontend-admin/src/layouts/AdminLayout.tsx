@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
-import { Layout, Menu, Typography, Avatar, Dropdown, type MenuProps } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Layout, Menu, Typography, Select, type MenuProps } from 'antd';
 import {
-  DashboardOutlined,
   ShoppingOutlined,
+  PlusCircleOutlined,
+  MonitorOutlined,
   OrderedListOutlined,
-  UserOutlined,
-  LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons';
@@ -14,16 +13,28 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 const { Header, Sider, Content } = Layout;
 const { Text } = Typography;
 
+const MERCHANT_OPTIONS = [
+  { value: '1001', label: '🏪 商家A (ID: 1001)' },
+  { value: '1002', label: '🏪 商家B (ID: 1002)' },
+];
+
+const STORAGE_KEY = 'merchantId';
+
 const menuItems: MenuProps['items'] = [
   {
-    key: '/dashboard',
-    icon: <DashboardOutlined />,
-    label: '数据大盘',
+    key: '/auction/console',
+    icon: <MonitorOutlined />,
+    label: '竞拍控制台',
   },
   {
-    key: '/auction',
+    key: '/auction/create',
+    icon: <PlusCircleOutlined />,
+    label: '发布拍品',
+  },
+  {
+    key: '/auction/list',
     icon: <ShoppingOutlined />,
-    label: '拍卖控制台',
+    label: '拍品管理',
   },
   {
     key: '/order',
@@ -34,30 +45,31 @@ const menuItems: MenuProps['items'] = [
 
 const AdminLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
+  const [merchantId, setMerchantId] = useState<string>('1001');
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      setMerchantId(stored);
+    } else {
+      localStorage.setItem(STORAGE_KEY, '1001');
+    }
+  }, []);
 
   const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
     navigate(key);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('admin_token');
-    navigate('/login');
+  const handleMerchantChange = (value: string) => {
+    localStorage.setItem(STORAGE_KEY, value);
+    window.location.reload();
   };
-
-  const userMenuItems: MenuProps['items'] = [
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: '退出登录',
-      danger: true,
-    },
-  ];
 
   const selectedKey = menuItems.find((item) =>
     location.pathname.startsWith(item?.key as string)
-  )?.key as string || '/dashboard';
+  )?.key as string || '/auction/console';
 
   return (
     <Layout className="min-h-screen">
@@ -110,16 +122,18 @@ const AdminLayout: React.FC = () => {
             {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
           </button>
 
-          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-            <div className="flex items-center gap-3 cursor-pointer">
-              <Avatar
-                size="small"
-                icon={<UserOutlined />}
-                style={{ background: '#1677ff' }}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Text type="secondary" className="text-sm">当前商家：</Text>
+              <Select
+                value={merchantId}
+                onChange={handleMerchantChange}
+                options={MERCHANT_OPTIONS}
+                style={{ width: 180 }}
+                size="middle"
               />
-              <Text type="secondary">商家用户</Text>
             </div>
-          </Dropdown>
+          </div>
         </Header>
 
         <Content
