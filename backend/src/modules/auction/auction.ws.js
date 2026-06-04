@@ -15,13 +15,11 @@ async function handleConnection(ws, roomId) {
     }
 
     try {
-        const auction = await auctionService.getActiveAuctionByRoomId(roomId);
-        if (auction) {
-            ws.send(JSON.stringify({
-                type: 'auction_info',
-                data: auction
-            }));
-        }
+        const displayState = await auctionService.getRoomDisplayState(roomId);
+        ws.send(JSON.stringify({
+            type: 'room_display',
+            data: displayState
+        }));
     } catch (error) {
         logger.error('[WS Gate] 送达客户端首屏初始缓存失败:', error);
     }

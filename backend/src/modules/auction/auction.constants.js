@@ -28,7 +28,8 @@ const WS_EVENTS = {
         AUCTION_ENDED: 'auction_ended',
         BIZ_ERROR: 'biz_error',
         AUCTION_INFO: 'auction_info',
-        BID_REJECTED: 'bid_rejected'
+        BID_REJECTED: 'bid_rejected',
+        ROOM_DISPLAY: 'room_display'
     }
 };
 

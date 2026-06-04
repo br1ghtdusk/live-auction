@@ -405,11 +405,74 @@ async function createAuction(payload) {
     return { id: auctionId };
 }
 
+async function getRoomDisplayState(roomId) {
+    const FIVE_MINUTES_MS = 5 * 60 * 1000;
+    const now = Date.now();
+    
+    // 获取最近10条数据（放大限制防止预售商品过多导致当前商品被挤出）
+    const auctions = await mysqlRepo.findByRoomId(roomId, 10, 0);
+    
+    if (auctions.length === 0) {
+        logger.info(`[Service] 房间 ${roomId} 没有任何拍品记录`);
+        return { mode: 'IDLE', auction: null };
+    }
+    
+    // 第一步：查找是否存在状态为 'BIDDING' 的拍品
+    const biddingAuction = auctions.find(a => a.status === 'BIDDING');
+    if (biddingAuction) {
+        const detail = await mysqlRepo.findById(biddingAuction.id);
+        logger.info(`[Service] 房间 ${roomId} 找到进行中的拍品 ID: ${biddingAuction.id}`);
+        return { mode: 'ACTIVE', auction: detail };
+    }
+    
+    // 第二步：查找所有状态为 'WAITING' 的拍品，取最临近开始的那一件
+    const waitingAuctions = auctions.filter(a => a.status === 'WAITING');
+    if (waitingAuctions.length > 0) {
+        // 按 scheduled_start_time 升序排序，取最临近开始的
+        waitingAuctions.sort((a, b) => 
+            new Date(a.scheduled_start_time).getTime() - new Date(b.scheduled_start_time).getTime()
+        );
+        const nearestWaiting = waitingAuctions[0];
+        const detail = await mysqlRepo.findById(nearestWaiting.id);
+        logger.info(`[Service] 房间 ${roomId} 找到即将开始的拍品 ID: ${nearestWaiting.id}`);
+        return { mode: 'ACTIVE', auction: detail };
+    }
+    
+    // 第三步：查找历史结束的拍品，执行 5 分钟缓冲期判定
+    const endedAuctions = auctions.filter(a => 
+        ['SOLD', 'FAILED', 'CANCELLED'].includes(a.status)
+    );
+    
+    if (endedAuctions.length > 0) {
+        // 按 ID 降序排序，取最新结束的
+        endedAuctions.sort((a, b) => b.id - a.id);
+        const latestEnded = endedAuctions[0];
+        
+        // 计算拍品结束时间：优先使用 actual_end_time，否则使用 scheduled_end_time
+        const auctionEndTime = latestEnded.actual_end_time 
+            ? new Date(latestEnded.actual_end_time).getTime()
+            : new Date(latestEnded.scheduled_end_time).getTime();
+        
+        // 检查结束时间是否在5分钟内
+        const timeSinceEnd = now - auctionEndTime;
+        
+        if (timeSinceEnd <= FIVE_MINUTES_MS) {
+            const detail = await mysqlRepo.findById(latestEnded.id);
+            logger.info(`[Service] 房间 ${roomId} 找到刚结束的拍品 ID: ${latestEnded.id}，结束于 ${Math.floor(timeSinceEnd / 1000)} 秒前`);
+            return { mode: 'RESULT', auction: detail };
+        }
+        
+        logger.info(`[Service] 房间 ${roomId} 最新拍品已结束超过 5 分钟`);
+    }
+    
+    // 第四步：以上皆无，返回 IDLE
+    logger.info(`[Service] 房间 ${roomId} 处于 IDLE 状态`);
+    return { mode: 'IDLE', auction: null };
+}
+
 async function getActiveAuctionByRoomId(roomId) {
-    // 获取指定房间最新的拍卖（无论状态）
-    const auctions = await mysqlRepo.findByRoomId(roomId, 1, 0);
-    if (!auctions || auctions.length === 0) return null;
-    return await mysqlRepo.findById(auctions[0].id);
+    const displayState = await getRoomDisplayState(roomId);
+    return displayState.mode !== 'IDLE' ? displayState.auction : null;
 }
 
 async function getAuctionsByMerchantId(merchantId) {
@@ -418,12 +481,119 @@ async function getAuctionsByMerchantId(merchantId) {
     return auctions.map(auction => ({
         id: auction.id,
         name: auction.name,
-        imageUrl: auction.image_url || null,
+        imageUrl: auction.image_url,
         startPrice: auction.start_price,
         currentPrice: auction.current_price,
+        bidIncrement: auction.bid_increment,
+        ceilingPrice: auction.ceiling_price,
         status: auction.status,
         scheduledStartTime: auction.scheduled_start_time,
         scheduledEndTime: auction.scheduled_end_time,
+        description: auction.description,
+        extendTriggerSeconds: auction.extend_trigger_seconds,
+        autoExtendSeconds: auction.auto_extend_seconds,
+        maxExtendCount: auction.max_extend_count,
+    }));
+}
+
+async function cancelAuction(auctionId, reason = '商家紧急取消') {
+    const auction = await mysqlRepo.findById(auctionId);
+    if (!auction) {
+        throw new Error('拍卖不存在');
+    }
+    
+    if (auction.status === 'SOLD' || auction.status === 'FAILED' || auction.status === 'CANCELLED') {
+        throw new Error('拍卖已结束，无法取消');
+    }
+
+    const now = Date.now();
+    const updatedAt = time.formatTimeForMySQL(now);
+    const actualEndTime = time.formatTimeForMySQL(now);
+    
+    // 更新数据库状态为 CANCELLED
+    await mysqlRepo.cancel(auctionId, 'CANCELLED', reason, actualEndTime, updatedAt);
+    
+    // 原子操作更新 Redis 缓存，防止并发击穿
+    await redisRepo.setFields(auctionId, {
+        status: 'CANCELLED',
+        cancel_reason: reason,
+        actual_end_time: now
+    });
+    
+    // 设置 24 小时过期时间，防止缓存雪崩
+    const TTL_SECONDS = 86400;
+    await redisRepo.expire(auctionId, TTL_SECONDS);
+    
+    logger.info(`[Service] 拍卖 ${auctionId} 已取消，Redis 缓存已原子更新并设置 TTL: ${TTL_SECONDS} 秒`);
+    
+    // 通过 eventBus 广播取消消息
+    eventBus.emit(constants.WS_EVENTS.SERVER_BROADCAST.AUCTION_ENDED, {
+        roomId: auction.room_id,
+        winnerId: null,
+        finalPrice: 0,
+        status: 'cancelled',
+        cancelReason: reason
+    });
+
+    return { success: true };
+}
+
+async function updateAuction(id, updateData) {
+    // 1. 查询拍品
+    const auction = await mysqlRepo.findById(id);
+    if (!auction) {
+        throw new Error('拍品不存在');
+    }
+    
+    // 2. 核心校验：只有 WAITING 状态才允许修改
+    if (auction.status !== 'WAITING') {
+        throw new Error('只有未开始(WAITING)的竞拍才允许修改规则');
+    }
+    
+    const now = Date.now();
+    const updatedAt = time.formatTimeForMySQL(now);
+    
+    // 3. 构建更新字段
+    const fields = { updated_at: updatedAt };
+    
+    // 可更新的字段
+    if (updateData.startPrice !== undefined) fields.start_price = updateData.startPrice;
+    if (updateData.currentPrice !== undefined) fields.current_price = updateData.currentPrice;
+    if (updateData.bidIncrement !== undefined) fields.bid_increment = updateData.bidIncrement;
+    if (updateData.ceilingPrice !== undefined) fields.ceiling_price = updateData.ceilingPrice;
+    if (updateData.scheduledStartTime !== undefined) fields.scheduled_start_time = time.formatTimeForMySQL(updateData.scheduledStartTime);
+    if (updateData.scheduledEndTime !== undefined) fields.scheduled_end_time = time.formatTimeForMySQL(updateData.scheduledEndTime);
+    if (updateData.description !== undefined) fields.description = updateData.description;
+    if (updateData.extendTriggerSeconds !== undefined) fields.extend_trigger_seconds = updateData.extendTriggerSeconds;
+    if (updateData.autoExtendSeconds !== undefined) fields.auto_extend_seconds = updateData.autoExtendSeconds;
+    if (updateData.maxExtendCount !== undefined) fields.max_extend_count = updateData.maxExtendCount;
+    if (updateData.imageUrl !== undefined) fields.image_url = updateData.imageUrl;
+    
+    // 4. 执行数据库更新
+    await mysqlRepo.updateById(id, fields);
+    
+    logger.info(`[Service] 拍品 ${id} 规则更新成功`);
+    
+    // 5. 同步 Redis 缓存（删除缓存，下次查询会重新从 MySQL 加载）
+    await redisRepo.removeAuctionKeys(id);
+    
+    // 6. 广播 WebSocket 更新通知
+    const displayState = await getRoomDisplayState(auction.room_id);
+    eventBus.emit(constants.WS_EVENTS.SERVER_BROADCAST.ROOM_DISPLAY, {
+        roomId: auction.room_id,
+        data: displayState
+    });
+    
+    return { id, ...fields };
+}
+
+async function getBidHistory(auctionId) {
+    const records = await mysqlRepo.findBidHistoryByAuctionId(auctionId, 50);
+    return records.map(record => ({
+        id: record.id,
+        userId: record.user_id,
+        amount: Math.round(record.bid_amount / 100),  // 转换为元并四舍五入
+        time: new Date(record.created_at).toLocaleTimeString()
     }));
 }
 
@@ -435,5 +605,9 @@ module.exports = {
     checkAndSettleAuctions,
     createAuction,
     getActiveAuctionByRoomId,
-    getAuctionsByMerchantId
+    getRoomDisplayState,
+    getAuctionsByMerchantId,
+    cancelAuction,
+    updateAuction,
+    getBidHistory
 };

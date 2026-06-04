@@ -140,6 +140,7 @@ async function start() {
         auctionWsHandler.init();
 
         auctionEventHandler.setWss(wss);
+        auctionEventHandler.setAuctionService(auctionService);
         auctionEventHandler.init();
 
         logger.info('[Server Master] 步骤3: 动态预热活跃拍品缓存...');

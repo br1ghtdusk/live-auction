@@ -18,6 +18,7 @@ export interface Auction {
   actual_end_time: number | null;   // 实际结束时间（毫秒）
   extend_count: number;     // 延时次数
   highest_bidder_id: number | null;
+  cancel_reason?: string | null; // 取消原因
   created_at: string;
   updated_at: string;
 }

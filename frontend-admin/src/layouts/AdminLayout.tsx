@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Layout, Menu, Typography, Select, type MenuProps } from 'antd';
 import {
   ShoppingOutlined,
@@ -43,7 +43,7 @@ const menuItems: MenuProps['items'] = [
   },
 ];
 
-const AdminLayout: React.FC = () => {
+const AdminLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [merchantId, setMerchantId] = useState<string>('1001');
   const navigate = useNavigate();
@@ -91,7 +91,7 @@ const AdminLayout: React.FC = () => {
             </Text>
           ) : (
             <Text strong style={{ color: '#fff', fontSize: 16 }}>
-              🎯 实时竞拍管理后台
+               实时竞拍管理后台
             </Text>
           )}
         </div>

@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState, useEffect } from 'react';
 import {
   Form,
   Input,
@@ -34,7 +34,12 @@ interface AuctionFormValues {
   extendTriggerSeconds: number;
   autoExtendSeconds: number;
   maxExtendCount: number;
-  roomId: number;  // 新增 roomId
+  roomId: number;
+}
+
+interface RoomOption {
+  value: number;
+  label: string;
 }
 
 const DURATION_OPTIONS = [
@@ -45,12 +50,46 @@ const DURATION_OPTIONS = [
   { value: 3600, label: '1 小时' },
 ];
 
-const AuctionForm: React.FC = () => {
+const AuctionForm = () => {
   const [form] = Form.useForm<AuctionFormValues>();
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = useState(false);
+  const [roomOptions, setRoomOptions] = useState<RoomOption[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(true);
 
   const startType = Form.useWatch('startType', form);
   const enableAntiSniper = Form.useWatch('enableAntiSniper', form);
+
+  useEffect(() => {
+    const fetchRooms = async () => {
+      try {
+        setRoomsLoading(true);
+        const merchantId = localStorage.getItem('merchantId');
+        const url = merchantId
+          ? `/rooms?merchantId=${merchantId}`
+          : '/rooms';
+        const res = await request.get(url);
+
+        if (res.data?.data && Array.isArray(res.data.data)) {
+          const options = res.data.data.map((room: { id: number; room_name: string }) => ({
+            value: room.id,
+            label: room.room_name,
+          }));
+          setRoomOptions(options);
+
+          if (options.length > 0) {
+            form.setFieldsValue({ roomId: options[0].value });
+          }
+        }
+      } catch (error) {
+        console.error('获取直播间列表失败:', error);
+        message.error('获取直播间列表失败');
+      } finally {
+        setRoomsLoading(false);
+      }
+    };
+
+    fetchRooms();
+  }, [form]);
 
   const handleFinish = async (values: AuctionFormValues) => {
     setLoading(true);
@@ -84,7 +123,7 @@ const AuctionForm: React.FC = () => {
 
       console.log('[AuctionForm] 提交数据:', payload);
 
-      await request.post('/admin/auction', payload);
+      await request.post('/admin/auctions', payload);
 
       message.success('商品已成功准备上架');
       form.resetFields();
@@ -126,17 +165,18 @@ const AuctionForm: React.FC = () => {
         </Divider>
 
         <Form.Item
-          label={<Text strong>房间 ID</Text>}
+          label={<Text strong>上架直播间</Text>}
           name="roomId"
           rules={[
-            { required: true, message: '请输入房间 ID' },
-            { type: 'number', min: 1, message: '房间 ID 至少为 1' },
+            { required: true, message: '请选择要上架的直播间' },
           ]}
         >
-          <InputNumber
-            placeholder="101"
+          <Select
+            placeholder="请选择直播间"
             style={{ width: '100%' }}
-            min={1}
+            options={roomOptions}
+            loading={roomsLoading}
+            notFoundContent={roomsLoading ? '加载中...' : '暂无可用直播间'}
           />
         </Form.Item>
 
@@ -243,6 +283,20 @@ const AuctionForm: React.FC = () => {
               </Space>
             }
             name="ceilingPrice"
+            rules={[
+              {
+                validator: (_, value) => {
+                  if (value === undefined || value === null || value === '') {
+                    return Promise.resolve();
+                  }
+                  const startPrice = form.getFieldValue('startPrice');
+                  if (startPrice !== undefined && value <= startPrice) {
+                    return Promise.reject(new Error('封顶价必须大于起拍价'));
+                  }
+                  return Promise.resolve();
+                },
+              },
+            ]}
           >
             <InputNumber
               prefix="￥"

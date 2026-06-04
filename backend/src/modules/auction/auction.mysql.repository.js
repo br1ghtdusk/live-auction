@@ -196,7 +196,9 @@ async function cancel(id, status, cancelReason, actualEndTime, updatedAt) {
 async function findByMerchantId(merchantId, limit = 20, offset = 0) {
     const [rows] = await db.getPool().query(
         `SELECT id, merchant_id, room_id, name, image_url, status,
-                start_price, scheduled_start_time, scheduled_end_time, current_price, highest_bidder_id
+                start_price, bid_increment, ceiling_price,
+                scheduled_start_time, scheduled_end_time, current_price, highest_bidder_id,
+                description, extend_trigger_seconds, auto_extend_seconds, max_extend_count
          FROM auctions
          WHERE merchant_id = ?
          ORDER BY scheduled_start_time DESC
@@ -206,15 +208,16 @@ async function findByMerchantId(merchantId, limit = 20, offset = 0) {
     return rows;
 }
 
-async function findByRoomId(roomId, limit = 20, offset = 0) {
+async function findByRoomId(roomId, limit = 10, offset = 0) {
     if (roomId === undefined) throw new Error('roomId cannot be undefined');
 
     const [rows] = await db.getPool().query(
         `SELECT id, merchant_id, room_id, name, image_url, status,
-                scheduled_start_time, scheduled_end_time, current_price, highest_bidder_id
+                scheduled_start_time, scheduled_end_time, current_price, highest_bidder_id,
+                actual_end_time, updated_at
          FROM auctions
          WHERE room_id = ?
-         ORDER BY scheduled_start_time DESC
+         ORDER BY created_at DESC
          LIMIT ? OFFSET ?`,
         [Number(roomId), Number(limit), Number(offset)]
     );
@@ -228,6 +231,18 @@ async function insertBidRecord(auctionId, userId, bidAmount, createdAt) {
         [auctionId, userId, bidAmount, createdAt]
     );
     return result.insertId;
+}
+
+async function findBidHistoryByAuctionId(auctionId, limit = 50) {
+    const [rows] = await db.getPool().query(
+        `SELECT id, auction_id, user_id, bid_amount, created_at
+         FROM bid_records
+         WHERE auction_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`,
+        [auctionId, limit]
+    );
+    return rows;
 }
 
 async function createOrder(data) {
@@ -258,6 +273,22 @@ async function findActiveAuctions() {
     return rows;
 }
 
+async function updateById(id, fields) {
+    const keys = Object.keys(fields);
+    const values = Object.values(fields);
+    
+    if (keys.length === 0) {
+        return;
+    }
+    
+    const setClause = keys.map(k => `${k} = ?`).join(', ');
+    const [result] = await db.getPool().execute(
+        `UPDATE auctions SET ${setClause} WHERE id = ?`,
+        [...values, Number(id)]
+    );
+    return result;
+}
+
 module.exports = {
     findById,
     create,
@@ -274,5 +305,7 @@ module.exports = {
     findByRoomId,
     findActiveAuctions,
     insertBidRecord,
-    createOrder
+    findBidHistoryByAuctionId,
+    createOrder,
+    updateById
 };

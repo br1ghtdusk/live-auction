@@ -11,6 +11,8 @@ interface BidPanelProps {
   isSubmitting: boolean;
   /** 触发上行出价动作的回调 */
   onBid: () => void;
+  /** 禁用原因提示文本 */
+  disabledReason?: string;
 }
 
 export const BidPanel: React.FC<BidPanelProps> = React.memo(({
@@ -18,6 +20,7 @@ export const BidPanel: React.FC<BidPanelProps> = React.memo(({
   canBid,
   isSubmitting,
   onBid,
+  disabledReason,
 }) => {
   const isButtonActive = canBid && !isSubmitting;
 
@@ -36,7 +39,7 @@ export const BidPanel: React.FC<BidPanelProps> = React.memo(({
         ) : isSubmitting ? (
           '处理中...'
         ) : (
-          '当前不支持出价'
+          disabledReason || '当前不支持出价'
         )}
       </span>
     </button>

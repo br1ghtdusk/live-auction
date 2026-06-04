@@ -140,7 +140,7 @@ const OrderListPage = () => {
       ),
     },
     {
-      title: '成交价格',
+      title: '成交金额',
       dataIndex: 'finalPrice',
       key: 'finalPrice',
       width: 120,

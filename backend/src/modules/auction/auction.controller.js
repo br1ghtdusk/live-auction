@@ -41,8 +41,67 @@ async function getAuctions(req, res) {
     }
 }
 
+async function cancelAuction(req, res) {
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+        
+        if (!id) {
+            return res.status(400).json({ code: 400, success: false, message: '拍卖 ID 不能为空' });
+        }
+        
+        await auctionService.cancelAuction(parseInt(id, 10), reason);
+        return res.json({ code: 200, success: true, message: '拍卖已成功取消' });
+    } catch (error) {
+        logger.error('[Controller Error] cancelAuction:', error);
+        return res.status(500).json({ code: 500, success: false, message: error.message || 'Internal system error' });
+    }
+}
+
+async function updateAuction(req, res) {
+    try {
+        const { id } = req.params;
+        const updateData = req.body;
+        
+        if (!id) {
+            return res.status(400).json({ code: 400, success: false, message: '拍卖 ID 不能为空' });
+        }
+        
+        const result = await auctionService.updateAuction(parseInt(id, 10), updateData);
+        return res.json({ code: 200, success: true, data: result, message: '拍品规则更新成功' });
+    } catch (error) {
+        logger.error('[Controller Error] updateAuction:', error);
+        
+        // 如果是业务校验错误（如状态不允许修改），返回 400
+        if (error.message && error.message.includes('只有未开始')) {
+            return res.status(400).json({ code: 400, success: false, message: error.message });
+        }
+        
+        return res.status(500).json({ code: 500, success: false, message: error.message || 'Internal system error' });
+    }
+}
+
+async function getBidHistory(req, res) {
+    try {
+        const { auctionId } = req.params;
+        
+        if (!auctionId) {
+            return res.status(400).json({ code: 400, success: false, message: '拍卖 ID 不能为空' });
+        }
+        
+        const history = await auctionService.getBidHistory(parseInt(auctionId, 10));
+        return res.json({ code: 200, success: true, data: history });
+    } catch (error) {
+        logger.error('[Controller Error] getBidHistory:', error);
+        return res.status(500).json({ code: 500, success: false, message: error.message || 'Internal system error' });
+    }
+}
+
 module.exports = {
     getAuctionById,
     createAuction,
-    getAuctions
+    getAuctions,
+    cancelAuction,
+    updateAuction,
+    getBidHistory
 };

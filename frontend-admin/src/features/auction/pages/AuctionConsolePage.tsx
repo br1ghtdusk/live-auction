@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Card,
   Statistic,
@@ -9,197 +9,235 @@ import {
   Timeline,
   Empty,
   message,
+  Typography,
 } from 'antd';
 import {
-  PlayCircleOutlined,
   WarningOutlined,
   ClockCircleOutlined,
   TagOutlined,
+  DesktopOutlined,
+  TrophyOutlined,
 } from '@ant-design/icons';
+import request from '../../../utils/request';
+import { ConsoleProvider, useConsoleStore, type BidRecord } from '../store/console.store';
 
-interface BidRecord {
-  id: number;
-  userId: number;
-  amount: number;
-  time: string;
-}
+const { Text } = Typography;
 
-const AuctionConsolePage: React.FC = () => {
-  const [selectedRoom, setSelectedRoom] = useState<string>('room-001');
-  const [selectedAuction, setSelectedAuction] = useState<string>('auction-001');
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [status, setStatus] = useState<'BIDDING' | 'WAITING' | 'ENDED'>('BIDDING');
-  const [currentPrice, setCurrentPrice] = useState<number>(8999);
-  const [countdown, setCountdown] = useState<number>(3600);
-  const [bidHistory, setBidHistory] = useState<BidRecord[]>([
-    { id: 1, userId: 4599, amount: 8999, time: '10:30:25' },
-    { id: 2, userId: 3210, amount: 8500, time: '10:28:12' },
-    { id: 3, userId: 4599, amount: 8000, time: '10:25:45' },
-    { id: 4, userId: 1890, amount: 7500, time: '10:22:30' },
-    { id: 5, userId: 4599, amount: 7000, time: '10:20:00' },
-  ]);
-  const [showCancelModal, setShowCancelModal] = useState<boolean>(false);
+const statusConfig: Record<string, { label: string; color: string; icon: string }> = {
+  BIDDING: { label: '竞拍中', color: 'red', icon: '🔥' },
+  WAITING: { label: '即将开始', color: 'gold', icon: '⏳' },
+  SOLD: { label: '已成交', color: 'green', icon: '✅' },
+  FAILED: { label: '已流拍', color: 'default', icon: '😢' },
+  CANCELLED: { label: '已取消', color: 'default', icon: '🚫' },
+};
 
-  const roomOptions = [
-    { value: 'room-001', label: '直播间 A' },
-    { value: 'room-002', label: '直播间 B' },
-    { value: 'room-003', label: '直播间 C' },
-  ];
+// ============ 大屏主视图组件 ============
+const LiveView = () => {
+  const {
+    roomDisplayMode,
+    currentAuction,
+    bidsList,
+  } = useConsoleStore();
 
-  const auctionOptions = [
-    { value: 'auction-001', label: 'iPhone 15 Pro Max' },
-    { value: 'auction-002', label: 'MacBook Pro 16' },
-    { value: 'auction-003', label: 'AirPods Pro 2' },
-  ];
+  const [countdownText, setCountdownText] = useState<string>('00:00:00');
+  const [countdownLabel, setCountdownLabel] = useState<string>('剩余时间');
+  const countdownRef = useRef<number | null>(null);
 
+  // 清理倒计时
+  const clearCountdown = useCallback(() => {
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+  }, []);
+
+  // 倒计时逻辑（局部心跳，不走 Context）
   useEffect(() => {
-    if (!isConnected || status !== 'BIDDING') return;
+    // 非 ACTIVE 模式，停止倒计时
+    if (roomDisplayMode !== 'ACTIVE' || !currentAuction) {
+      setCountdownText('00:00:00');
+      setCountdownLabel('剩余时间');
+      clearCountdown();
+      return;
+    }
 
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 0) {
-          setStatus('ENDED');
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    const { status, scheduled_start_time, scheduled_end_time } = currentAuction;
+    let targetTime: number;
 
-    return () => clearInterval(timer);
-  }, [isConnected, status]);
-
-  useEffect(() => {
-    if (!isConnected) return;
-
-    const bidTimer = setInterval(() => {
-      const newBid: BidRecord = {
-        id: Date.now(),
-        userId: Math.floor(Math.random() * 9000) + 1000,
-        amount: currentPrice + Math.floor(Math.random() * 500),
-        time: new Date().toLocaleTimeString(),
-      };
-      setCurrentPrice(newBid.amount);
-      setBidHistory((prev) => [newBid, ...prev].slice(0, 10));
-    }, 15000);
-
-    return () => clearInterval(bidTimer);
-  }, [isConnected, currentPrice]);
-
-  const handleConnect = () => {
-    if (isConnected) {
-      setIsConnected(false);
-      message.info('已断开与直播间的连接');
+    if (status === 'WAITING') {
+      setCountdownLabel('距离开始还有');
+      targetTime = scheduled_start_time;
+    } else if (status === 'BIDDING') {
+      setCountdownLabel('剩余时间');
+      targetTime = scheduled_end_time;
     } else {
-      setIsConnected(true);
-      message.success('成功连接到直播间');
+      setCountdownText('00:00:00');
+      setCountdownLabel('剩余时间');
+      clearCountdown();
+      return;
+    }
+
+    if (targetTime <= 0) {
+      setCountdownText('00:00:00');
+      clearCountdown();
+      return;
+    }
+
+    const updateCountdown = () => {
+      const now = Date.now();
+      const remaining = Math.max(0, targetTime - now);
+      const seconds = Math.floor(remaining / 1000);
+      const hrs = Math.floor(seconds / 3600);
+      const mins = Math.floor((seconds % 3600) / 60);
+      const secs = seconds % 60;
+      setCountdownText(`${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`);
+    };
+
+    updateCountdown();
+    countdownRef.current = window.setInterval(updateCountdown, 1000);
+
+    return () => clearCountdown();
+  }, [roomDisplayMode, currentAuction, clearCountdown]);
+
+  const currentStatus = statusConfig[currentAuction?.status || 'WAITING'] || statusConfig.WAITING;
+  const isEndedStatus = ['SOLD', 'FAILED', 'CANCELLED'].includes(currentAuction?.status || '');
+
+  const renderContent = () => {
+    switch (roomDisplayMode) {
+      case 'IDLE':
+        return (
+          <Empty
+            description={
+              <div className="text-center">
+                <div className="text-lg font-bold text-gray-600 mb-2">🎉 当前直播间暂无进行中的竞拍</div>
+                <div className="text-gray-400">请等待主播发布下一件拍品</div>
+              </div>
+            }
+            style={{ padding: '60px 0' }}
+          />
+        );
+
+      case 'RESULT':
+        return (
+          <>
+            {currentAuction && (
+              <div className="mb-4 pb-3 border-b border-gray-200">
+                <Text strong type="secondary" className="text-sm">竞拍结果</Text>
+                <div className="text-lg font-bold text-gray-800">{currentAuction.name}</div>
+              </div>
+            )}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <Statistic
+                  title="成交价"
+                  value={currentAuction?.current_price ? currentAuction.current_price / 100 : 0}
+                  prefix="¥"
+                  suffix=".00"
+                  styles={{ content: { fontSize: 48, fontWeight: 'bold', color: '#52c41a' } }}
+                />
+                <div className="flex flex-col justify-center">
+                  <Tag color={currentStatus.color} style={{ fontSize: 16, padding: '8px 16px' }}>
+                    <span>{currentStatus.icon}</span>
+                    <span className="ml-2">{currentStatus.label}</span>
+                  </Tag>
+                </div>
+              </div>
+              <Statistic
+                title="剩余时间"
+                value="00:00:00"
+                prefix={<ClockCircleOutlined className="text-gray-400" />}
+                styles={{ content: { fontSize: 36, fontWeight: 'bold', color: '#999' } }}
+              />
+            </div>
+
+            {currentAuction?.status === 'SOLD' && currentAuction?.highest_bidder_id && (
+              <Card className="mb-4" bordered={false} style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f' }}>
+                <div className="flex items-center gap-4">
+                  <TrophyOutlined className="text-yellow-500" style={{ fontSize: 40 }} />
+                  <div>
+                    <div className="text-sm text-gray-500">恭喜成交</div>
+                    <div className="text-lg font-bold text-green-600">
+                      用户 {currentAuction.highest_bidder_id} 以 ¥{currentAuction.current_price / 100}.00 成功拍得
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            <Button
+              type="primary"
+              danger
+              size="large"
+              icon={<WarningOutlined />}
+              disabled
+              style={{ width: '100%', height: 60, fontSize: 18, fontWeight: 'bold' }}
+            >
+              🚨 紧急取消竞拍
+            </Button>
+          </>
+        );
+
+      case 'ACTIVE':
+      default:
+        return (
+          <>
+            {currentAuction && (
+              <div className="mb-4 pb-3 border-b border-gray-200">
+                <Text strong type="secondary" className="text-sm">当前竞拍</Text>
+                <div className="text-lg font-bold text-gray-800">{currentAuction.name}</div>
+              </div>
+            )}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <Statistic
+                  title="当前最高价"
+                  value={currentAuction?.current_price ? currentAuction.current_price / 100 : 0}
+                  prefix="¥"
+                  suffix=".00"
+                  styles={{ content: { fontSize: 48, fontWeight: 'bold', color: '#ff4d4f' } }}
+                />
+                <div className="flex flex-col justify-center">
+                  <Tag color={currentStatus.color} style={{ fontSize: 16, padding: '8px 16px' }}>
+                    <span>{currentStatus.icon}</span>
+                    <span className="ml-2">{currentStatus.label}</span>
+                  </Tag>
+                </div>
+              </div>
+              <Statistic
+                title={countdownLabel}
+                value={countdownText}
+                prefix={<ClockCircleOutlined className="text-blue-500" />}
+                styles={{ content: { fontSize: 36, fontWeight: 'bold', color: '#1890ff' } }}
+              />
+            </div>
+
+            <Button
+              type="primary"
+              danger
+              size="large"
+              icon={<WarningOutlined />}
+              disabled={isEndedStatus || !currentAuction}
+              style={{ width: '100%', height: 60, fontSize: 18, fontWeight: 'bold' }}
+            >
+              🚨 紧急取消竞拍
+            </Button>
+          </>
+        );
     }
   };
 
-  const handleCancelAuction = () => {
-    setShowCancelModal(true);
-  };
-
-  const confirmCancel = () => {
-    setStatus('ENDED');
-    setIsConnected(false);
-    setShowCancelModal(false);
-    message.warning('竞拍已紧急取消');
-  };
-
-  const formatTime = (seconds: number): string => {
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
-
-  const statusConfig = {
-    BIDDING: { label: '竞拍中', color: 'red' as const, icon: '🔥' },
-    WAITING: { label: '即将开始', color: 'gold' as const, icon: '⏳' },
-    ENDED: { label: '已结束', color: 'default' as const, icon: '✅' },
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Select
-            value={selectedRoom}
-            onChange={setSelectedRoom}
-            options={roomOptions}
-            style={{ width: 180 }}
-            placeholder="选择直播间"
-          />
-          <Select
-            value={selectedAuction}
-            onChange={setSelectedAuction}
-            options={auctionOptions}
-            style={{ width: 220 }}
-            placeholder="选择拍品"
-          />
-        </div>
-        <Button
-          type={isConnected ? 'default' : 'primary'}
-          icon={isConnected ? <ClockCircleOutlined /> : <PlayCircleOutlined />}
-          onClick={handleConnect}
-          size="large"
-        >
-          {isConnected ? '断开连接' : '连接直播间'}
-        </Button>
-      </div>
-
+    <>
       <Card className="shadow-lg">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <Statistic
-              title="当前最高价"
-              value={currentPrice}
-              prefix="¥"
-              suffix=".00"
-              styles={{ content: { fontSize: 48, fontWeight: 'bold', color: '#ff4d4f' } }}
-            />
-            <div className="flex flex-col justify-center">
-              <Tag
-                color={statusConfig[status].color}
-                style={{ fontSize: 16, padding: '8px 16px' }}
-              >
-                <span>{statusConfig[status].icon}</span>
-                <span className="ml-2">{statusConfig[status].label}</span>
-              </Tag>
-            </div>
-          </div>
-          <Statistic
-            title="剩余时间"
-            value={formatTime(countdown)}
-            prefix={<ClockCircleOutlined className="text-blue-500" />}
-            styles={{ content: { fontSize: 36, fontWeight: 'bold', color: '#1890ff' } }}
-          />
-        </div>
-
-        <Button
-          type="primary"
-          danger
-          size="large"
-          icon={<WarningOutlined />}
-          onClick={handleCancelAuction}
-          disabled={status === 'ENDED'}
-          style={{
-            width: '100%',
-            height: 60,
-            fontSize: 18,
-            fontWeight: 'bold',
-          }}
-        >
-          🚨 紧急取消竞拍
-        </Button>
+        {renderContent()}
       </Card>
 
       <Card title="实时出价流水" className="shadow-md">
         <div className="h-[300px] overflow-y-auto">
-          {bidHistory.length > 0 ? (
+          {bidsList.length > 0 ? (
             <Timeline
               mode="start"
-              items={bidHistory.map((record) => ({
+              items={bidsList.map((record) => ({
                 key: record.id,
                 icon: <TagOutlined className="text-orange-500" />,
                 content: (
@@ -218,10 +256,196 @@ const AuctionConsolePage: React.FC = () => {
           )}
         </div>
       </Card>
+    </>
+  );
+};
+
+// ============ 主页面组件 ============
+const AuctionConsoleContent = () => {
+  const merchantId = localStorage.getItem('merchantId');
+
+  const {
+    currentAuction,
+    setRoomDisplay,
+    initBidsList,
+    appendNewBid,
+    resetStore,
+  } = useConsoleStore();
+
+  const [roomOptions, setRoomOptions] = useState<{ value: number; label: string }[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<number | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState<boolean>(false);
+  const [roomsLoading, setRoomsLoading] = useState<boolean>(true);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
+
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // 获取直播间列表
+  useEffect(() => {
+    const fetchRooms = async () => {
+      try {
+        setRoomsLoading(true);
+        const url = merchantId ? `/rooms?merchantId=${merchantId}` : '/rooms';
+        const res = await request.get(url);
+
+        if (res.data?.data && Array.isArray(res.data.data)) {
+          const options = res.data.data.map((room: { id: number; room_name: string }) => ({
+            value: room.id,
+            label: room.room_name,
+          }));
+          setRoomOptions(options);
+
+          if (options.length > 0 && selectedRoom === null) {
+            setSelectedRoom(options[0].value);
+          }
+        }
+      } catch (error) {
+        console.error('获取直播间列表失败:', error);
+        message.error('获取直播间列表失败');
+      } finally {
+        setRoomsLoading(false);
+      }
+    };
+
+    fetchRooms();
+  }, [merchantId]);
+
+  // 拉取历史出价记录
+  const fetchBidHistory = useCallback(async (auctionId: string | number) => {
+    try {
+      const res = await request.get(`/admin/auctions/${auctionId}/bids`);
+      if (res.data?.success && Array.isArray(res.data.data)) {
+        initBidsList(res.data.data);
+      }
+    } catch (error) {
+      console.error('[AuctionConsole] 拉取出价历史失败:', error);
+    }
+  }, [initBidsList]);
+
+  // WebSocket 消息处理
+  const handleMessage = useCallback((event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data);
+
+      switch (data.type) {
+        case 'room_display': {
+          const { mode, auction } = data.data;
+          setRoomDisplay(mode as 'ACTIVE' | 'RESULT' | 'IDLE', auction || null);
+          if (auction) {
+            fetchBidHistory(auction.id);
+          }
+          break;
+        }
+
+        case 'price_update': {
+          const priceData = data.data;
+          const newBid: BidRecord = {
+            id: Date.now(),
+            userId: priceData.highestBidderId,
+            amount: priceData.currentPrice / 100,
+            time: new Date().toLocaleTimeString(),
+          };
+          appendNewBid(newBid);
+          break;
+        }
+
+        case 'auction_ended': {
+          const endData = data.data;
+          message.info(endData.status === 'cancelled' ? '竞拍已取消' : '竞拍已结束');
+          break;
+        }
+      }
+    } catch (error) {
+      console.error('消息解析错误:', error);
+    }
+  }, [setRoomDisplay, fetchBidHistory, appendNewBid]);
+
+  // 自动连接 WebSocket
+  useEffect(() => {
+    if (selectedRoom === null || roomsLoading) return;
+
+    resetStore();
+    const ws = new WebSocket(`ws://localhost:8081?roomId=${selectedRoom}`);
+
+    ws.onopen = () => {
+      setIsConnected(true);
+      message.success('成功连接到直播间');
+    };
+
+    ws.onclose = () => {
+      setIsConnected(false);
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket 错误:', error);
+      message.error('连接失败，请检查后端服务');
+    };
+
+    ws.onmessage = handleMessage;
+    wsRef.current = ws;
+
+    return () => {
+      ws.close();
+    };
+  }, [selectedRoom, roomsLoading, handleMessage, resetStore]);
+
+  // 取消竞拍
+  const confirmCancel = async () => {
+    if (!currentAuction) return;
+    try {
+      await request.post(`/admin/auctions/${currentAuction.id}/cancel`);
+      setShowCancelModal(false);
+      message.success('取消指令已发送，等待 WebSocket 同步状态...');
+    } catch (error) {
+      console.error('取消竞拍失败:', error);
+      message.error('取消失败，请稍后重试');
+    }
+  };
+
+  // 查看直播间画面
+  const handleViewLive = () => {
+    if (selectedRoom) {
+      window.open(`http://localhost:5173/?roomId=${selectedRoom}`, '_blank', 'width=375,height=812');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Select
+            value={selectedRoom}
+            onChange={(value) => setSelectedRoom(value)}
+            options={roomOptions}
+            style={{ width: 200 }}
+            placeholder="选择直播间"
+            disabled={roomsLoading}
+            loading={roomsLoading}
+            notFoundContent={roomsLoading ? '加载中...' : '暂无可用直播间'}
+          />
+          {isConnected && (
+            <Tag color="green">
+              <span>● </span>
+              <span>已连接</span>
+            </Tag>
+          )}
+        </div>
+        <Button
+          type="primary"
+          icon={<DesktopOutlined />}
+          onClick={handleViewLive}
+          size="large"
+          disabled={!selectedRoom}
+        >
+          查看直播间画面
+        </Button>
+      </div>
+
+      <LiveView />
 
       <Modal
         title="确认取消竞拍"
-        visible={showCancelModal}
+        open={showCancelModal}
         onOk={confirmCancel}
         onCancel={() => setShowCancelModal(false)}
         okText="确认取消"
@@ -232,6 +456,15 @@ const AuctionConsolePage: React.FC = () => {
         <p className="text-red-500 mt-2">⚠️ 此操作将立即结束竞拍，无法恢复！</p>
       </Modal>
     </div>
+  );
+};
+
+// ============ 页面入口（包裹 Provider）============
+const AuctionConsolePage = () => {
+  return (
+    <ConsoleProvider>
+      <AuctionConsoleContent />
+    </ConsoleProvider>
   );
 };
 

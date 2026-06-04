@@ -56,6 +56,7 @@ export const useAuctionStatus = (auction: Auction | null): DisplayStatus => {
       ...defaultStatus,
       label: '已取消',
       className: 'status-cancelled',
+      subtext: auction.cancel_reason || '商家紧急取消',
     };
   }
 

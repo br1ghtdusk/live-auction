@@ -117,4 +117,22 @@ CREATE TABLE IF NOT EXISTS `orders` (
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='竞拍订单表';
 
+-- =============================================
+-- 4. 直播间表（Livestream Rooms）
+-- =============================================
+CREATE TABLE IF NOT EXISTS `rooms` (
+    `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '直播间ID',
+    `merchant_id` BIGINT UNSIGNED NOT NULL COMMENT '商家/主播ID',
+    `room_name` VARCHAR(100) NOT NULL COMMENT '直播间名称',
+    `status` VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' COMMENT 'ACTIVE/INACTIVE',
+    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    INDEX `idx_merchant_id` (`merchant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='直播间表';
+
+-- 初始化演示数据
+INSERT INTO `rooms` (`id`, `merchant_id`, `room_name`, `status`) VALUES
+(101, 1001, '主播1001·数码科技专场', 'ACTIVE'),
+(201, 1002, '主播1002·潮流玩具专场', 'ACTIVE');
+
 SET FOREIGN_KEY_CHECKS = 1;

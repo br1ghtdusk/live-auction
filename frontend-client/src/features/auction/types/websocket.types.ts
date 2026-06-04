@@ -2,17 +2,23 @@ import type { Auction } from './auction.types';
 
 /**
  * WebSocket 接收消息接口定义（下行）
+ * 已废弃 auction_info 协议，全面使用 room_display 协议
  */
 
-export interface AuctionInfoData extends Auction {
-  message?: string;
+/**
+ * 首屏/状态变更消息（主协议）
+ */
+export interface RoomDisplayMessage {
+  type: 'room_display';
+  data: {
+    mode: 'ACTIVE' | 'RESULT' | 'IDLE';
+    auction: Auction | null;
+  };
 }
 
-export interface AuctionInfoMessage {
-  type: 'auction_info';
-  data: AuctionInfoData;
-}
-
+/**
+ * 价格更新消息
+ */
 export interface PriceUpdateMessage {
   type: 'price_update';
   data: {
@@ -23,16 +29,23 @@ export interface PriceUpdateMessage {
   };
 }
 
+/**
+ * 拍卖结束消息
+ */
 export interface AuctionEndedMessage {
   type: 'auction_ended';
   data: {
     winnerId: number | null;
     finalPrice: number;
-    status: 'sold' | 'unsold';
+    status: 'SOLD' | 'FAILED' | 'CANCELLED';
     actualEndTime?: number;  // 实际成交时间
+    cancelReason?: string;   // 取消原因
   };
 }
 
+/**
+ * 出价被拒绝消息
+ */
 export interface BidRejectedMessage {
   type: 'bid_rejected';
   data: {
@@ -42,14 +55,17 @@ export interface BidRejectedMessage {
   };
 }
 
+/**
+ * WebSocket 消息联合类型
+ */
 export type AuctionWebSocketMessage = 
-  | AuctionInfoMessage 
+  | RoomDisplayMessage
   | PriceUpdateMessage 
   | AuctionEndedMessage 
   | BidRejectedMessage;
 
 /**
- * WebSocket 发送消息接口定义（上行契约，由 App.tsx 中 handleBid 提炼而来）
+ * WebSocket 发送消息接口定义（上行）
  */
 export interface BidPayload {
   action: 'bid';

@@ -1,10 +1,9 @@
-import React from 'react';
 import { Typography } from 'antd';
 import AuctionForm from '../components/AuctionForm';
 
 const { Title, Text } = Typography;
 
-const AuctionCreatePage: React.FC = () => {
+const AuctionCreatePage = () => {
   return (
     <div className="flex flex-col gap-6">
       <div>

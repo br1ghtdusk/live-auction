@@ -7,6 +7,8 @@ import { getBidRejectedReason } from '../utils/getBidRejectedReason';
 import { auctionSocketService } from '../services/auction.socket';
 import type { AuctionWebSocketMessage } from '../types/websocket.types';
 
+export type RoomDisplayMode = 'ACTIVE' | 'RESULT' | 'IDLE';
+
 interface UseAuctionSocketOptions {
   wsUrl: string;
   myUserId: number;
@@ -17,6 +19,7 @@ export const useAuctionSocket = ({ wsUrl, myUserId }: UseAuctionSocketOptions) =
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [roomDisplayMode, setRoomDisplayMode] = useState<RoomDisplayMode>('IDLE');
 
   const { isConnected, sendMessage } = useWebSocket<AuctionWebSocketMessage>({
     url: wsUrl,
@@ -31,10 +34,15 @@ export const useAuctionSocket = ({ wsUrl, myUserId }: UseAuctionSocketOptions) =
       console.log('[useAuctionSocket] 接收到业务消息类型:', message.type);
 
       switch (message.type) {
-        case 'auction_info': {
-          const cleanedAuction = sanitizeAuctionData(message.data);
-          if (cleanedAuction) {
+        case 'room_display': {
+          const { mode, auction: auctionData } = message.data;
+          setRoomDisplayMode(mode as RoomDisplayMode);
+          
+          if (auctionData) {
+            const cleanedAuction = sanitizeAuctionData(auctionData);
             setAuction(cleanedAuction);
+          } else {
+            setAuction(null);
           }
           setLoading(false);
           break;
@@ -51,7 +59,6 @@ export const useAuctionSocket = ({ wsUrl, myUserId }: UseAuctionSocketOptions) =
             }
             console.log(`[useAuctionSocket] ✅ 检测到有效价格更新: ${prev.current_price} → ${newPrice}`);
             
-            // 💡 关键修复：首次出价时将状态从 WAITING 切换为 BIDDING
             const newStatus = prev.status === 'WAITING' ? 'BIDDING' as AuctionStatus : prev.status;
             
             return {
@@ -69,15 +76,25 @@ export const useAuctionSocket = ({ wsUrl, myUserId }: UseAuctionSocketOptions) =
         }
 
         case 'auction_ended': {
-          const newStatus: AuctionStatus = message.data.status === 'sold' ? 'SOLD' : 'FAILED';
+          const endData = message.data;
+          let newStatus: AuctionStatus;
+          if (endData.status === 'SOLD') {
+            newStatus = 'SOLD';
+          } else if (endData.status === 'CANCELLED') {
+            newStatus = 'CANCELLED';
+          } else {
+            newStatus = 'FAILED';
+          }
+          
           setAuction((prev) =>
             prev
               ? {
                   ...prev,
                   status: newStatus,
-                  current_price: message.data.finalPrice,
-                  highest_bidder_id: message.data.winnerId,
-                  actual_end_time: message.data.actualEndTime ?? null,
+                  current_price: endData.finalPrice || prev.current_price,
+                  highest_bidder_id: endData.winnerId || prev.highest_bidder_id,
+                  actual_end_time: endData.actualEndTime ?? null,
+                  cancel_reason: endData.cancelReason ?? null,
                 }
               : null
           );
@@ -141,6 +158,7 @@ export const useAuctionSocket = ({ wsUrl, myUserId }: UseAuctionSocketOptions) =
     error,
     isConnected,
     isSubmitting,
+    roomDisplayMode,
     placeBid,
   };
 };
