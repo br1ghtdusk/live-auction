@@ -151,7 +151,7 @@ const LiveView = () => {
             </div>
 
             {currentAuction?.status === 'SOLD' && currentAuction?.highest_bidder_id && (
-              <Card className="mb-4" bordered={false} style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f' }}>
+              <Card className="mb-4" style={{ backgroundColor: '#f6ffed', border: '1px solid #b7eb8f' }}>
                 <div className="flex items-center gap-4">
                   <TrophyOutlined className="text-yellow-500" style={{ fontSize: 40 }} />
                   <div>

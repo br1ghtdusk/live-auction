@@ -3,6 +3,8 @@ import { cn } from '../../../shared/utils/cn';
 import { formatPrice } from '../../../shared/utils/formatPrice';
 
 interface BidPanelProps {
+  /** 当前价格（分） */
+  currentPrice: number;
   /** 当前加价幅度（分） */
   bidIncrement: number;
   /** 是否允许出价（由业务状态机决定） */
@@ -16,6 +18,7 @@ interface BidPanelProps {
 }
 
 export const BidPanel: React.FC<BidPanelProps> = React.memo(({
+  currentPrice,
   bidIncrement,
   canBid,
   isSubmitting,
@@ -23,6 +26,7 @@ export const BidPanel: React.FC<BidPanelProps> = React.memo(({
   disabledReason,
 }) => {
   const isButtonActive = canBid && !isSubmitting;
+  const nextBidPrice = currentPrice + bidIncrement;
 
   return (
     <button
@@ -30,18 +34,16 @@ export const BidPanel: React.FC<BidPanelProps> = React.memo(({
       onClick={onBid}
       disabled={!isButtonActive}
     >
-      <span>
-        {isButtonActive ? (
-          <>
-            <span className="bid-icon">💰</span>
-            <span>出价 (+{formatPrice(bidIncrement)})</span>
-          </>
-        ) : isSubmitting ? (
-          '处理中...'
-        ) : (
-          disabledReason || '当前不支持出价'
-        )}
-      </span>
+      {isButtonActive ? (
+        <>
+          <span className="bid-action">立即出价</span>
+          <span className="bid-price">{formatPrice(nextBidPrice)}</span>
+        </>
+      ) : isSubmitting ? (
+        '处理中...'
+      ) : (
+        disabledReason || '当前不支持出价'
+      )}
     </button>
   );
 });

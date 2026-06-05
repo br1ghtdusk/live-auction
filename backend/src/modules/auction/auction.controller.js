@@ -97,11 +97,28 @@ async function getBidHistory(req, res) {
     }
 }
 
+async function getLeaderboard(req, res) {
+    try {
+        const { auctionId } = req.params;
+        
+        if (!auctionId) {
+            return res.status(400).json({ code: 400, success: false, message: '拍卖 ID 不能为空' });
+        }
+        
+        const leaderboard = await auctionService.getLeaderboard(parseInt(auctionId, 10));
+        return res.json({ code: 200, success: true, data: leaderboard });
+    } catch (error) {
+        logger.error('[Controller Error] getLeaderboard:', error);
+        return res.status(500).json({ code: 500, success: false, message: error.message || 'Internal system error' });
+    }
+}
+
 module.exports = {
     getAuctionById,
     createAuction,
     getAuctions,
     cancelAuction,
     updateAuction,
-    getBidHistory
+    getBidHistory,
+    getLeaderboard
 };

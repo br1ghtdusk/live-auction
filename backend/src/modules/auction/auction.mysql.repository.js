@@ -245,6 +245,27 @@ async function findBidHistoryByAuctionId(auctionId, limit = 50) {
     return rows;
 }
 
+/**
+ * 获取拍品的出价排行榜（前5名）
+ * @param {number} auctionId - 拍品ID
+ * @returns {Array} - 排行榜数据
+ */
+async function findLeaderboardByAuctionId(auctionId) {
+    const [rows] = await db.getPool().query(
+        `SELECT 
+            user_id AS userId,
+            MAX(bid_amount) AS maxBidAmount,
+            COUNT(*) AS bidCount
+         FROM bid_records
+         WHERE auction_id = ?
+         GROUP BY user_id
+         ORDER BY maxBidAmount DESC
+         LIMIT 5`,
+        [auctionId]
+    );
+    return rows;
+}
+
 async function createOrder(data) {
     const {
         auction_id,
@@ -306,6 +327,7 @@ module.exports = {
     findActiveAuctions,
     insertBidRecord,
     findBidHistoryByAuctionId,
+    findLeaderboardByAuctionId,
     createOrder,
     updateById
 };

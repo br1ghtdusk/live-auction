@@ -5,41 +5,30 @@ import type { AuctionStatus } from '../constants/auctionStatus';
 interface PricePanelProps {
   startPrice: number;
   currentPrice: number;
-  status: AuctionStatus;
+  bidIncrement: number;
+  status?: AuctionStatus | null | undefined;
 }
 
 export const PricePanel: React.FC<PricePanelProps> = React.memo(({
   startPrice,
   currentPrice,
+  bidIncrement,
   status,
 }) => {
   if (status === 'FAILED') {
     return (
-      <div className="price-section">
-        <div className="price-item w-full">
-          <span className="price-label text-gray-400">拍卖结果</span>
-          <span className="price-value text-gray-400 text-lg">
-            无人出价，已流拍
-          </span>
-        </div>
+      <div className="price-section-failed">
+        <span className="failed-text">😢 无人出价，已流拍</span>
       </div>
     );
   }
 
   if (status === 'SOLD') {
     return (
-      <div className="price-section">
-        <div className="price-item">
-          <span className="price-label">起拍价</span>
-          <span className="price-value starting">
-            {formatPrice(startPrice)}
-          </span>
-        </div>
-        <div className="price-item current-price">
-          <span className="price-label">落槌价</span>
-          <span key={currentPrice} className="price-value current price-flash">
-            {formatPrice(currentPrice)}
-          </span>
+      <div className="price-section-result">
+        <div className="result-label">成交价</div>
+        <div key={currentPrice} className="result-price price-flash">
+          {formatPrice(currentPrice)}
         </div>
       </div>
     );
@@ -48,17 +37,16 @@ export const PricePanel: React.FC<PricePanelProps> = React.memo(({
   const hasBid = currentPrice > startPrice;
 
   return (
-    <div className="price-section">
-      <div className="price-item">
-        <span className="price-label">起拍价</span>
-        <span className="price-value starting">
-          {formatPrice(startPrice)}
+    <div className="price-section-active">
+      <div className="current-price-block">
+        <span className="current-label">{hasBid ? '当前价' : '起拍价'}</span>
+        <span key={currentPrice} className="current-value price-flash">
+          {formatPrice(currentPrice)}
         </span>
       </div>
-      <div className="price-item current-price">
-        <span className="price-label">{hasBid ? '当前最高' : '起拍价'}</span>
-        <span key={currentPrice} className="price-value current price-flash">
-          {formatPrice(currentPrice)}
+      <div className="increment-row">
+        <span className="increment-hint">
+          加价幅度 {formatPrice(bidIncrement)}
         </span>
       </div>
     </div>

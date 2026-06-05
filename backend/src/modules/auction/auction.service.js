@@ -597,6 +597,22 @@ async function getBidHistory(auctionId) {
     }));
 }
 
+/**
+ * 获取拍品的出价排行榜（前5名）
+ * @param {number} auctionId - 拍品ID
+ * @returns {Array} - 排行榜数据
+ */
+async function getLeaderboard(auctionId) {
+    const records = await mysqlRepo.findLeaderboardByAuctionId(auctionId);
+    return records.map(record => ({
+        userId: record.userId,
+        username: `用户${record.userId}`,  // 由于没有 users 表，使用用户ID作为昵称
+        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${record.userId}`,  // 生成随机头像
+        maxBidAmount: record.maxBidAmount,  // 保持分为单位
+        bidCount: record.bidCount
+    }));
+}
+
 module.exports = {
     initializeAuctionCache,
     warmUpActiveAuctionsCache,
@@ -609,5 +625,6 @@ module.exports = {
     getAuctionsByMerchantId,
     cancelAuction,
     updateAuction,
-    getBidHistory
+    getBidHistory,
+    getLeaderboard
 };

@@ -8,5 +8,6 @@ router.post('/', auctionController.createAuction);
 router.put('/:id', auctionController.updateAuction);
 router.post('/:id/cancel', auctionController.cancelAuction);
 router.get('/:auctionId/bids', auctionController.getBidHistory);
+router.get('/:auctionId/leaderboard', auctionController.getLeaderboard);
 
 module.exports = router;

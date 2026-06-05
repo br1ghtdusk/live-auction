@@ -1,5 +1,7 @@
 import type { Auction } from '../types/auction.types';
 import type { AuctionStatus } from '../constants/auctionStatus';
+import { toTimestamp } from '../../../shared/utils/formatTime';
+
 /**
  * 数据清洗防腐层（Sanitization Layer）
  * 将后端返回的原始数据安全转换为强类型的 Auction 对象
@@ -18,10 +20,10 @@ export const sanitizeAuctionData = (rawData: any): Auction | null => {
     bid_increment: Number(rawData.bid_increment) || 0,
     ceiling_price: Number(rawData.ceiling_price) || 0,
     status: (rawData.status || 'WAITING') as AuctionStatus,
-    scheduled_start_time: Number(rawData.scheduled_start_time ?? 0),
-    scheduled_end_time: Number(rawData.scheduled_end_time ?? 0),
-    actual_start_time: rawData.actual_start_time ? Number(rawData.actual_start_time) : null,
-    actual_end_time: rawData.actual_end_time ? Number(rawData.actual_end_time) : null,
+    scheduled_start_time: toTimestamp(rawData.scheduled_start_time),
+    scheduled_end_time: toTimestamp(rawData.scheduled_end_time),
+    actual_start_time: rawData.actual_start_time ? toTimestamp(rawData.actual_start_time) : null,
+    actual_end_time: rawData.actual_end_time ? toTimestamp(rawData.actual_end_time) : null,
     extend_count: Number(rawData.extend_count) || 0,
     highest_bidder_id: rawData.highest_bidder_id ? Number(rawData.highest_bidder_id) : null,
     created_at: String(rawData.created_at || ''),
