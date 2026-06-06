@@ -7,6 +7,7 @@ const auctionEngine = require('../../engines/auction-engine.js');
 const settlementEngine = require('../../engines/settlement-engine.js');
 const logger = require('../../utils/logger.js');
 const time = require('../../utils/time.js');
+const db = require('../../infrastructure/db.js');
 
 async function initializeAuctionCache(id) {
     try {
@@ -510,14 +511,37 @@ async function cancelAuction(auctionId, reason = '商家紧急取消') {
     const updatedAt = time.formatTimeForMySQL(now);
     const actualEndTime = time.formatTimeForMySQL(now);
     
-    // 更新数据库状态为 CANCELLED
-    await mysqlRepo.cancel(auctionId, 'CANCELLED', reason, actualEndTime, updatedAt);
+    // 获取当前版本号
+    const version = auction.version;
+    
+    // 使用乐观锁更新
+    const affectedRows = await mysqlRepo.updateStatusAndPriceWithLock(
+        auctionId,
+        'CANCELLED',
+        auction.current_price,
+        null,
+        version,
+        updatedAt
+    );
+    
+    // 检查乐观锁结果
+    if (affectedRows === 0) {
+        throw new Error('数据已被他人修改，请刷新后重试');
+    }
+    
+    // 更新取消原因字段
+    await mysqlRepo.updateById(auctionId, {
+        cancel_reason: reason,
+        actual_end_time: actualEndTime,
+        updated_at: updatedAt
+    });
     
     // 原子操作更新 Redis 缓存，防止并发击穿
     await redisRepo.setFields(auctionId, {
         status: 'CANCELLED',
         cancel_reason: reason,
-        actual_end_time: now
+        actual_end_time: now,
+        highest_bidder_id: null
     });
     
     // 设置 24 小时过期时间，防止缓存雪崩
@@ -553,8 +577,14 @@ async function updateAuction(id, updateData) {
     const now = Date.now();
     const updatedAt = time.formatTimeForMySQL(now);
     
-    // 3. 构建更新字段
-    const fields = { updated_at: updatedAt };
+    // 3. 获取当前版本号
+    const version = auction.version;
+    
+    // 4. 构建更新字段（包含版本检查）
+    const fields = { 
+        updated_at: updatedAt,
+        version: version + 1  // 版本自增
+    };
     
     // 可更新的字段
     if (updateData.startPrice !== undefined) fields.start_price = updateData.startPrice;
@@ -569,15 +599,24 @@ async function updateAuction(id, updateData) {
     if (updateData.maxExtendCount !== undefined) fields.max_extend_count = updateData.maxExtendCount;
     if (updateData.imageUrl !== undefined) fields.image_url = updateData.imageUrl;
     
-    // 4. 执行数据库更新
-    await mysqlRepo.updateById(id, fields);
+    // 5. 使用乐观锁执行数据库更新
+    const [result] = await db.getPool().execute(
+        `UPDATE auctions SET ${Object.keys(fields).map(k => `${k} = ?`).join(', ')} 
+         WHERE id = ? AND version = ?`,
+        [...Object.values(fields), id, version]
+    );
+    
+    // 6. 检查乐观锁结果
+    if (result.affectedRows === 0) {
+        throw new Error('数据已被他人修改，请刷新后重试');
+    }
     
     logger.info(`[Service] 拍品 ${id} 规则更新成功`);
     
-    // 5. 同步 Redis 缓存（删除缓存，下次查询会重新从 MySQL 加载）
+    // 7. 同步 Redis 缓存（删除缓存，下次查询会重新从 MySQL 加载）
     await redisRepo.removeAuctionKeys(id);
     
-    // 6. 广播 WebSocket 更新通知
+    // 8. 广播 WebSocket 更新通知
     const displayState = await getRoomDisplayState(auction.room_id);
     eventBus.emit(constants.WS_EVENTS.SERVER_BROADCAST.ROOM_DISPLAY, {
         roomId: auction.room_id,

@@ -32,6 +32,10 @@ export interface ConsoleState {
   isConnected: boolean;
   isSubmitting: boolean;
   myUserId: number;
+  // 延时提醒相关
+  showExtensionAlert: boolean;
+  extensionSeconds: number;
+  alertTrigger: number;  // 用于解决连续弹窗被吞的 Bug
 }
 
 export interface ConsoleActions {
@@ -43,6 +47,7 @@ export interface ConsoleActions {
   setError: (error: string | null) => void;
   setConnected: (connected: boolean) => void;
   setSubmitting: (submitting: boolean) => void;
+  setExtensionAlert: (show: boolean, seconds?: number) => void;
   resetStore: () => void;
   submitBid: (bidAmount: number) => void;
   loadLeaderboard: () => Promise<void>;
@@ -62,6 +67,10 @@ const initialState: ConsoleState = {
   isConnected: false,
   isSubmitting: false,
   myUserId: 0,
+  // 延时提醒相关
+  showExtensionAlert: false,
+  extensionSeconds: 0,
+  alertTrigger: 0,
 };
 
 export const AuctionContext = createContext<ConsoleStore | null>(null);
@@ -87,6 +96,11 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
   const [error, setError] = useState(initialState.error);
   const [isConnected, setConnected] = useState(initialState.isConnected);
   const [isSubmitting, setSubmitting] = useState(initialState.isSubmitting);
+  
+  // 延时提醒状态
+  const [showExtensionAlert, setShowExtensionAlert] = useState(initialState.showExtensionAlert);
+  const [extensionSeconds, setExtensionSeconds] = useState(initialState.extensionSeconds);
+  const [alertTrigger, setAlertTrigger] = useState(initialState.alertTrigger);
 
   // 更新展示模式和当前拍品
   const setRoomDisplay = useCallback((mode: RoomDisplayMode, auction: Auction | null) => {
@@ -120,6 +134,21 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     setError(initialState.error);
     setConnected(initialState.isConnected);
     setSubmitting(initialState.isSubmitting);
+    setShowExtensionAlert(initialState.showExtensionAlert);
+    setExtensionSeconds(initialState.extensionSeconds);
+    setAlertTrigger(initialState.alertTrigger);
+  }, []);
+
+  // 设置延时提醒
+  const setExtensionAlert = useCallback((show: boolean, seconds?: number) => {
+    setShowExtensionAlert(show);
+    if (seconds !== undefined) {
+      setExtensionSeconds(seconds);
+    }
+    if (show) {
+      // 使用时间戳作为触发器，确保连续多次延时时组件能重新渲染
+      setAlertTrigger(Date.now());
+    }
   }, []);
 
   // 加载拍卖数据（仅出价流水）
@@ -265,6 +294,24 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
             setSubmitting(false);
             break;
           }
+
+          case 'EXTENSION': {
+            const extData = data.data;
+            
+            // 1. 弹出延时提醒
+            setExtensionAlert(true, extData.extendSeconds);
+            
+            // 2. 核心业务：真正延长拍品的倒计时
+            setCurrentAuction((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                scheduled_end_time: extData.newEndTime,
+                extend_count: prev.extend_count + 1,
+              };
+            });
+            break;
+          }
         }
       } catch (e) {
         console.error('消息解析错误:', e);
@@ -322,6 +369,10 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     isConnected,
     isSubmitting,
     myUserId,
+    // 延时提醒
+    showExtensionAlert,
+    extensionSeconds,
+    alertTrigger,
     setRoomDisplay,
     initBidsList,
     appendNewBid,
@@ -330,6 +381,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     setError,
     setConnected,
     setSubmitting,
+    setExtensionAlert,
     resetStore,
     submitBid,
     loadLeaderboard,

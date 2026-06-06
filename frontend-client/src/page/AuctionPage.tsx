@@ -4,6 +4,7 @@ import { AuctionProvider } from '../features/auction/store/auction.store';
 import { useAuctionStore } from '../features/auction/hooks/useAuctionstore';
 import AuctionCard from '../features/auction/components/AuctionCard';
 import { LeaderboardDrawer } from '../features/auction/components/LeaderboardDrawer';
+import { ExtensionAlert } from '../features/auction/components/ExtensionAlert';
 import './AuctionPage.css';
 
 // ============ 子组件：视频背景 ============
@@ -65,6 +66,7 @@ function AuctionPageBody() {
   return (
     <div className="auction-page-container">
       <VideoBackground />
+      <ExtensionAlert />
       <BidBarrageContainer />
       <LeaderboardButton onClick={handleLeaderboardClick} />
       <div className="auction-card-wrapper">

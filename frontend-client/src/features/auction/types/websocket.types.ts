@@ -56,13 +56,26 @@ export interface BidRejectedMessage {
 }
 
 /**
+ * 竞拍延时消息（防秒拍机制）
+ */
+export interface ExtensionMessage {
+  type: 'EXTENSION';
+  data: {
+    extendSeconds: number;       // 延时秒数
+    remainingExtendCount: number; // 剩余可延时次数
+    newEndTime: number;          // 新的结束时间戳
+  };
+};
+
+/**
  * WebSocket 消息联合类型
  */
 export type AuctionWebSocketMessage = 
   | RoomDisplayMessage
   | PriceUpdateMessage 
   | AuctionEndedMessage 
-  | BidRejectedMessage;
+  | BidRejectedMessage
+  | ExtensionMessage;
 
 /**
  * WebSocket 发送消息接口定义（上行）
