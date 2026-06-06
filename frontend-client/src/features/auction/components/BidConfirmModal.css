@@ -1,0 +1,143 @@
+.bid-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(4px);
+  z-index: 2000;
+}
+
+.bid-confirm-container {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 2001;
+  pointer-events: none;
+}
+
+.bid-confirm-dialog {
+  width: 100%;
+  max-width: 320px;
+  background: var(--color-surface);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  padding: 24px;
+  pointer-events: auto;
+  box-shadow: 0 20px 80px rgba(0, 0, 0, 0.8);
+}
+
+.dialog-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.warning-icon {
+  font-size: 32px;
+}
+
+.dialog-title {
+  font-size: var(--text-lg);
+  font-weight: 900;
+  color: var(--color-ink);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.dialog-content {
+  margin-bottom: 28px;
+}
+
+.amount-display {
+  background: #000;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.amount-label {
+  font-size: 10px;
+  color: var(--color-muted);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.amount-value {
+  font-size: var(--text-2xl);
+  font-weight: 950;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+
+.warning-text {
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  text-align: center;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.warning-text strong {
+  color: #f87171;
+  font-weight: 800;
+}
+
+.dialog-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.btn-confirm {
+  width: 100%;
+  padding: 14px;
+  background: var(--color-primary);
+  color: #000;
+  border: none;
+  border-radius: 10px;
+  font-weight: 900;
+  font-size: var(--text-base);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-confirm:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.btn-confirm:active {
+  transform: scale(0.97);
+}
+
+.btn-cancel {
+  width: 100%;
+  padding: 12px;
+  background: transparent;
+  color: var(--color-muted);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-ink);
+}

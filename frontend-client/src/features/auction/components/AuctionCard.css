@@ -1,15 +1,18 @@
 /* ============ 基础状态容器 ============ */
 .auction-card {
-  background: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(16px);
-  border-top-left-radius: 20px;
-  border-top-right-radius: 20px;
+  background: var(--color-surface);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  box-shadow: 0 -12px 60px rgba(0, 0, 0, 0.8);
+  position: relative;
+  overflow: hidden;
 }
 
 .auction-card-loading,
 .auction-card-idle,
 .auction-card-error {
-  padding: 20px;
+  padding: 24px;
   text-align: center;
 }
 
@@ -18,14 +21,14 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .loading-spinner {
   width: 24px;
   height: 24px;
-  border: 3px solid rgba(139, 92, 246, 0.3);
-  border-top-color: #8b5cf6;
+  border: 3px solid rgba(56, 189, 248, 0.2);
+  border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -36,96 +39,220 @@
 
 /* ============ 空闲状态样式 - 优雅等待看板 ============ */
 .auction-card-idle {
-  min-height: 200px;
+  min-height: 220px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.idle-content {
-  gap: 12px;
-  padding: 20px;
-}
-
 .idle-icon {
-  font-size: 48px;
-  animation: bounce 2s ease-in-out infinite;
+  font-size: var(--text-display);
+  animation: float-slow 3s ease-in-out infinite;
 }
 
-@keyframes bounce {
+@keyframes float-slow {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+  50% { transform: translateY(-8px); }
 }
 
 .idle-title {
-  font-size: 1.4rem;
-  font-weight: 700;
-  color: #f1f5f9;
+  font-size: var(--text-2xl);
+  font-weight: 950;
+  color: var(--color-ink);
+  letter-spacing: -0.04em;
 }
 
 .idle-subtitle {
-  font-size: 0.95rem;
-  color: #94a3b8;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  letter-spacing: 0;
+  font-weight: 500;
 }
 
 .idle-hint {
-  font-size: 0.85rem;
-  color: #f59e0b;
+  font-size: var(--text-xs);
+  color: var(--color-warning);
   margin-top: 8px;
-  opacity: 0.8;
+  opacity: 0.9;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .auction-card-error {
-  color: #94a3b8;
+  color: var(--color-muted);
 }
 
 .auction-card-error button {
-  margin-top: 8px;
-  padding: 6px 16px;
-  background: #8b5cf6;
-  color: white;
+  margin-top: 12px;
+  padding: 8px 20px;
+  background: var(--color-primary);
+  color: #000;
+  font-weight: 800;
   border: none;
   border-radius: 8px;
   cursor: pointer;
+  text-transform: uppercase;
+  font-size: var(--text-xs);
 }
 
 /* ============ 拍卖卡片主体 ============ */
 .auction-card-content {
-  background: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(16px);
-  border-top-left-radius: 20px;
-  border-top-right-radius: 20px;
+  background: var(--color-bg);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* 顶部状态栏 - 精简 */
+.auction-card-content.is-winning {
+  background: linear-gradient(to bottom, oklch(0.15 0.05 140), var(--color-bg));
+  box-shadow: inset 0 0 20px rgba(16, 185, 129, 0.1);
+}
+
+.winning-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--color-success), transparent);
+  animation: sweep 2s linear infinite;
+  z-index: 5;
+}
+
+@keyframes sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+/* 顶部状态栏 - 极窄精密化 */
 .card-top-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 14px;
-  background: rgba(0, 0, 0, 0.3);
-  font-size: 12px;
+  padding: 8px 16px;
+  background: #000;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 950;
+  min-height: 44px; /* 增加点击区域 */
+  user-select: none;
+}
+
+.card-top-bar:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.card-top-bar:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.collapsed-info-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 12px;
+  padding-left: 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  animation: fadeIn 0.3s ease-out;
+}
+
+.info-label {
+  color: var(--color-muted);
+  font-weight: 700;
+  font-size: 10px;
+}
+
+.info-value {
+  color: #fff;
+  font-weight: 900;
+}
+
+.info-value.primary {
+  color: var(--color-primary);
+}
+
+.info-value.success {
+  color: var(--color-success);
+}
+
+.toggle-icon {
+  font-size: 10px;
+  color: var(--color-muted);
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.expandable-content {
+  overflow: hidden;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 .live-indicator {
   color: #f87171;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .live-indicator.connected {
-  color: #34d399;
+  color: var(--color-success);
 }
 
 .user-id-mini {
-  color: #64748b;
-  font-size: 11px;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  opacity: 0.6;
 }
 
-/* ============ 商品图片区域 ============ */
+/* ============ 商品图片区域 - 锁定比例 ============ */
 .card-image-wrapper {
   position: relative;
   width: 100%;
-  background: #0f172a;
+  aspect-ratio: 16 / 10;
+  background: #000;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.placeholder-icon {
+  font-size: 32px;
+  opacity: 0.2;
+}
+
+.placeholder-text {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.card-image-wrapper.is-missing .placeholder-text {
+  display: block;
 }
 
 .card-image-wrapper.small {
@@ -139,34 +266,38 @@
   max-height: 180px;
   object-fit: cover;
   object-position: center;
+  opacity: 0.9;
 }
 
 /* 状态标签 */
 .status-badge {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 10px;
+  left: 12px;
   padding: 4px 12px;
-  border-radius: 12px;
-  font-weight: 700;
-  font-size: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  border-radius: 8px;
+  font-weight: 950;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
-.status-waiting-start { background: #64748b; color: white; }
-.status-waiting-bid { background: #f59e0b; color: #1e293b; }
-.status-active { background: #3b82f6; color: white; }
+.status-waiting-start { background: var(--color-muted); color: white; }
+.status-waiting-bid { background: var(--color-warning); color: #000; }
+.status-active { background: var(--color-primary); color: #000; }
 .status-settling { background: #8b5cf6; color: white; }
-.status-sold { background: #10b981; color: white; }
+.status-sold { background: var(--color-success); color: white; }
 .status-failed { background: #ef4444; color: white; }
 .status-cancelled { background: #475569; color: white; }
 
 /* ============ 倒计时 ============ */
 .countdown-badge {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  background: rgba(15, 23, 42, 0.9);
-  padding: 4px 10px;
+  top: 10px;
+  right: 12px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  padding: 6px 12px;
   border-radius: 10px;
   border: 1px solid rgba(255,255,255,0.1);
 }
@@ -174,18 +305,20 @@
 .time-display {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .time-numbers {
-  font-family: 'Courier New', monospace;
-  font-weight: bold;
-  font-size: 14px;
-  color: #38bdf8;
+  font-family: var(--font-mono);
+  font-weight: 900;
+  font-size: var(--text-sm);
+  color: var(--color-primary);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .countdown-urgent {
-  background: rgba(220, 38, 38, 0.9) !important;
+  background: rgba(220, 38, 38, 0.95) !important;
   border-color: #f87171;
   animation: urgentBlink 1s infinite;
 }
@@ -195,111 +328,338 @@
 
 @keyframes urgentBlink {
   0%, 100% { box-shadow: 0 0 4px #ef4444; }
-  50% { box-shadow: 0 0 16px #ef4444; }
+  50% { box-shadow: 0 0 20px #ef4444; }
 }
 
-/* ============ 内容区域 ============ */
+/* ============ 内容区域 - 精密网格布局 ============ */
 .card-body {
-  padding: 12px 14px 16px;
+  padding: 24px 16px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  background: linear-gradient(to bottom, var(--color-surface), var(--color-bg));
+  position: relative;
+}
+
+.card-body::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 16px;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.08), transparent);
 }
 
 .card-title {
-  margin: 0 0 10px 0;
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #f1f5f9;
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 950;
+  color: var(--color-ink);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  /* 限制两行防止布局抖动 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-/* ============ 价格面板 - 强化当前价 ============ */
+/* ============ 价格面板 - 极致对比 ============ */
 .price-section-active {
-  margin-bottom: 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: flex-end;
+  gap: 16px;
+  margin: 0;
 }
 
 .current-price-block {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 .current-label {
-  font-size: 12px;
-  color: #64748b;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 800;
 }
 
 .current-value {
-  font-size: 1.8rem;
-  font-weight: 800;
-  color: #f43f5e;
-  line-height: 1.2;
+  font-size: var(--text-display);
+  font-weight: 950;
+  color: var(--color-primary);
+  line-height: 1;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+  filter: drop-shadow(0 0 12px rgba(56, 189, 248, 0.25));
 }
 
 .increment-row {
-  margin-top: 4px;
+  margin: 0;
   text-align: right;
+  align-self: flex-end;
+  padding-bottom: 4px;
 }
 
 .increment-hint {
-  font-size: 11px;
-  color: #f59e0b;
-  font-weight: 500;
+  font-size: var(--text-xs);
+  color: var(--color-warning);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* 流拍状态 */
 .price-section-failed {
-  padding: 12px;
+  padding: 16px;
   text-align: center;
   background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
   border-radius: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .failed-text {
   color: #f87171;
-  font-size: 14px;
+  font-size: var(--text-sm);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 /* 成交状态 */
 .price-section-result {
   text-align: center;
-  padding: 12px;
-  background: rgba(16, 185, 129, 0.1);
+  padding: 16px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.15);
   border-radius: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .result-label {
-  font-size: 12px;
-  color: #64748b;
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
 }
 
 .result-price {
-  font-size: 1.6rem;
-  font-weight: 800;
-  color: #10b981;
+  font-size: var(--text-2xl);
+  font-weight: 950;
+  color: var(--color-success);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
 }
 
 /* ============ 价格跳动动画 ============ */
 .price-flash {
-  animation: pricePulse 0.6s ease-out;
+  animation: pricePulse 0.6s cubic-bezier(0.16, 1, 0.3, 1);
   display: inline-block;
 }
 
 @keyframes pricePulse {
   0% { transform: scale(1); }
-  30% { transform: scale(1.15); color: #22c55e; }
-  60% { transform: scale(1.08); }
+  25% { transform: scale(1.1); color: var(--color-success); }
   100% { transform: scale(1); }
+}
+
+/* ============ 集成排行榜 ============ */
+.card-leaderboard-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.section-label {
+  font-size: 10px;
+  color: var(--color-muted);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.compact-leaderboard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compact-rank-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.rank-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 950;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.rank-1 { background: #FFD700; color: #000; box-shadow: 0 0 10px rgba(255, 215, 0, 0.25); }
+.rank-2 { background: #E2E8F0; color: #000; }
+.rank-3 { background: #B45309; color: #fff; }
+
+.rank-name {
+  flex: 1;
+  font-size: var(--text-sm);
+  font-weight: 800;
+  color: #fff;
+  opacity: 0.85;
+  letter-spacing: -0.01em;
+}
+
+.rank-price {
+  font-size: var(--text-sm);
+  font-weight: 900;
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.empty-rank {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  text-align: center;
+  padding: 10px 0;
+  font-weight: 500;
+}
+
+/* ============ 出价控制容器 - 高密度布局 ============ */
+.bid-controls-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.bid-input-group {
+  display: flex;
+  align-items: center;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  overflow: hidden;
+  height: 56px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.bid-input-group.disabled {
+  opacity: 0.5;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.adjust-btn {
+  width: 56px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: var(--text-xl);
+  font-weight: 900;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.adjust-btn:hover:not(:disabled) {
+  background: rgba(56, 189, 248, 0.1);
+}
+
+.adjust-btn:active:not(:disabled) {
+  background: rgba(56, 189, 248, 0.2);
+  transform: scale(0.9);
+}
+
+.input-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  height: 100%;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.input-hint-mini {
+  position: absolute;
+  bottom: 6px;
+  font-size: 9px;
+  color: var(--color-muted);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+.currency-symbol {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-muted);
+  font-weight: 900;
+  font-size: var(--text-sm);
+}
+
+.bid-amount-input {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--color-ink);
+  text-align: center;
+  font-size: var(--text-xl);
+  font-weight: 950;
+  font-family: var(--font-mono);
+  padding: 0 40px 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+
+/* 隐藏 number 输入框的箭头 */
+.bid-amount-input::-webkit-inner-spin-button,
+.bid-amount-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 /* ============ 出价按钮 - 显示下一口价 ============ */
 .bid-button {
   width: 100%;
-  padding: 14px;
+  padding: 16px;
   border: none;
-  border-radius: 14px;
-  font-weight: 700;
+  border-radius: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -307,33 +667,49 @@
 }
 
 .bid-button.active {
-  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
-  color: white;
-  box-shadow: 0 6px 20px rgba(236, 72, 153, 0.4);
+  background: var(--color-primary);
+  color: #000;
+  box-shadow: 0 0 30px rgba(56, 189, 248, 0.3);
 }
 
 .bid-button.active:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(236, 72, 153, 0.5);
+  filter: brightness(1.1);
+  box-shadow: 0 0 40px rgba(56, 189, 248, 0.45);
+}
+.bid-button.active:active {
+  transform: scale(0.96);
+  filter: brightness(0.9);
 }
 
-.bid-button.active:active {
-  transform: scale(0.98);
+.bid-button.needs-confirm {
+  background: var(--color-accent) !important;
+  color: #fff !important;
+  animation: pulse-red 1.5s infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 10px rgba(244, 63, 94, 0.3); }
+  50% { box-shadow: 0 0 30px rgba(244, 63, 94, 0.6); }
 }
 
 .bid-button.disabled {
-  background: #334155;
-  color: #64748b;
+  background: var(--color-surface);
+  color: var(--color-muted);
   cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .bid-action {
-  font-size: 1rem;
+  font-size: var(--text-sm);
+  letter-spacing: 0.08em;
 }
 
 .bid-price {
-  font-size: 1.1rem;
-  font-weight: 800;
+  font-size: var(--text-lg);
+  font-weight: 950;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }
 
 /* ============ 结果模式 ============ */
@@ -344,7 +720,7 @@
 .result-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(15, 23, 42, 0.9);
+  background: rgba(0, 0, 0, 0.9);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -355,58 +731,68 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
 .result-emoji {
-  font-size: 40px;
+  font-size: var(--text-display);
+  filter: drop-shadow(0 0 10px rgba(255,255,255,0.2));
 }
 
 .result-title {
-  font-size: 1.2rem;
-  font-weight: 700;
+  font-size: var(--text-xl);
+  font-weight: 950;
   color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
 }
 
 .result-body {
-  padding-top: 80px;
+  padding-top: 100px;
 }
 
 .result-price-section {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  margin-bottom: 12px;
+  gap: 6px;
+  margin-bottom: 20px;
 }
 
 .result-value {
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: #94a3b8;
+  font-size: var(--text-xl);
+  font-weight: 950;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .result-value.sold {
-  color: #10b981;
+  color: var(--color-success);
+  font-size: var(--text-2xl);
 }
 
 .winner-section {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: rgba(245, 158, 11, 0.15);
-  border-radius: 20px;
+  gap: 10px;
+  padding: 10px 24px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 30px;
 }
 
 .winner-badge {
-  font-size: 13px;
+  font-size: var(--text-xs);
   color: #fbbf24;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .winner-id {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: 950;
   color: #fbbf24;
+  letter-spacing: -0.01em;
 }

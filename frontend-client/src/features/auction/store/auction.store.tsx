@@ -1,4 +1,5 @@
 import { createContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
 import type { Auction } from '../types/auction.types';
 import { auctionApi } from '../services/auction.api';
 import { sanitizeAuctionData } from '../utils/sanitizeAuction';
@@ -27,6 +28,7 @@ export interface ConsoleState {
   currentAuction: Auction | null;
   bidsList: BidRecord[];
   leaderboardList: LeaderboardItem[];
+  bidderCount: number;
   loading: boolean;
   error: string | null;
   isConnected: boolean;
@@ -43,6 +45,7 @@ export interface ConsoleActions {
   initBidsList: (bids: BidRecord[]) => void;
   appendNewBid: (bid: BidRecord) => void;
   setLeaderboard: (list: LeaderboardItem[]) => void;
+  setBidderCount: (count: number) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setConnected: (connected: boolean) => void;
@@ -62,6 +65,7 @@ const initialState: ConsoleState = {
   currentAuction: null,
   bidsList: [],
   leaderboardList: [],
+  bidderCount: 0,
   loading: true,
   error: null,
   isConnected: false,
@@ -92,6 +96,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
   const [currentAuction, setCurrentAuction] = useState(initialState.currentAuction);
   const [bidsList, setBidsList] = useState(initialState.bidsList);
   const [leaderboardList, setLeaderboardList] = useState(initialState.leaderboardList);
+  const [bidderCount, setBidderCount] = useState(initialState.bidderCount);
   const [loading, setLoading] = useState(initialState.loading);
   const [error, setError] = useState(initialState.error);
   const [isConnected, setConnected] = useState(initialState.isConnected);
@@ -124,12 +129,17 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     setLeaderboardList(list);
   }, []);
 
+  const setBidderCountAction = useCallback((count: number) => {
+    setBidderCount(count);
+  }, []);
+
   // 重置 store
   const resetStore = useCallback(() => {
     setRoomDisplayMode(initialState.roomDisplayMode);
     setCurrentAuction(initialState.currentAuction);
     setBidsList(initialState.bidsList);
     setLeaderboardList(initialState.leaderboardList);
+    setBidderCount(initialState.bidderCount);
     setLoading(initialState.loading);
     setError(initialState.error);
     setConnected(initialState.isConnected);
@@ -186,8 +196,13 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     try {
       const res = await auctionApi.getAuctionLeaderboard(auction.id);
       if (res.code === 0 || res.code === 200) {
-        // 直接使用后端返回的数据结构，无需转换
-        setLeaderboard(res.data);
+        // 后端返回结构为 { list: [], bidderCount: number }
+        if (res.data && res.data.list) {
+          setLeaderboard(res.data.list);
+          setBidderCount(res.data.bidderCount);
+        } else {
+          setLeaderboard(res.data);
+        }
       }
     } catch (err) {
       console.error('获取排行榜失败:', err);
@@ -240,10 +255,11 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
 
         switch (data.type) {
           case 'room_display': {
-            const { mode, auction } = data.data;
+            const { mode, auction, bidderCount } = data.data;
             const cleanedAuction = auction ? sanitizeAuctionData(auction) : null;
             setRoomDisplayMode(mode);
             setCurrentAuction(cleanedAuction);
+            if (bidderCount !== undefined) setBidderCount(bidderCount);
             setLoading(false); // 数据加载完成
             
             if (cleanedAuction) {
@@ -260,6 +276,23 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
             setSubmitting(false);
 
             const priceData = data.data;
+            if (priceData.bidderCount !== undefined) setBidderCount(priceData.bidderCount);
+            if (priceData.leaderboardList) setLeaderboard(priceData.leaderboardList);
+
+            // 被超越提醒逻辑
+            const wasIWinning = currentAuctionRef.current?.highest_bidder_id === myUserId;
+            const amIWinningNow = priceData.highestBidderId === myUserId;
+
+            if (wasIWinning && !amIWinningNow && myUserId !== 0) {
+              toast.error('您已被超越！赶快加价！', { 
+                description: `当前最高价已更新至 ¥${(priceData.currentPrice / 100).toFixed(2)}`,
+                icon: '⚠️',
+                duration: 5000
+              });
+            } else if (amIWinningNow) {
+              toast.success('出价成功！您目前暂时领先');
+            }
+
             const newBid: BidRecord = {
               id: Date.now(),
               userId: priceData.highestBidderId,
@@ -283,6 +316,13 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
               currentAuctionRef.current = updated;
               return updated;
             });
+            break;
+          }
+
+          case 'leaderboard_update': {
+            const { list, bidderCount } = data.data;
+            if (list) setLeaderboard(list);
+            if (bidderCount !== undefined) setBidderCount(bidderCount);
             break;
           }
 
@@ -323,7 +363,8 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     setLoading(true);
 
     // WebSocket 连接（主要数据来源）
-    const ws = new WebSocket(`${WS_URL}?roomId=${roomId}`);
+    const sanitizedWsUrl = `${WS_URL}/?roomId=${roomId}`.replace(/\/+\?/, '/?');
+    const ws = new WebSocket(sanitizedWsUrl);
     
     ws.onopen = () => {
       console.log('[WS] OPEN');
@@ -364,6 +405,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     currentAuction,
     bidsList,
     leaderboardList,
+    bidderCount,
     loading,
     error,
     isConnected,
@@ -377,6 +419,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     initBidsList,
     appendNewBid,
     setLeaderboard,
+    setBidderCount: setBidderCountAction,
     setLoading,
     setError,
     setConnected,

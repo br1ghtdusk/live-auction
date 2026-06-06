@@ -40,6 +40,13 @@ build/Release
 # Dependency directories
 node_modules/
 jspm_packages/
+**/node_modules/
+
+# Build outputs
+dist/
+**/dist/
+build/
+**/build/
 
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/
@@ -141,3 +148,20 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# AI & Agent Files
+.agents/
+.gemini/
+.impeccable/
+GEMINI.md
+DESIGN.md
+PRODUCT.md
+skills-lock.json
+*.md.bak
+
+# Monorepo Subproject Ignores
+**/node_modules/
+**/dist/
+**/build/
+.env
+.env.*
