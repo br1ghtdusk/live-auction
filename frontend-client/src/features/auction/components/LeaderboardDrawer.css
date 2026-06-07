@@ -65,8 +65,8 @@
 }
 
 .close-button {
-  width: 36px;
-  height: 36px;
+  width: 44px; /* Increased for mobile touch (44px min) */
+  height: 44px;
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.1);

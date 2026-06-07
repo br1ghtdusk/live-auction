@@ -23,7 +23,9 @@ function handlePriceUpdate(data) {
             currentPrice: data.currentPrice,
             highestBidderId: data.highestBidderId,
             endTime: data.endTime,
-            extendCount: data.extendCount
+            extendCount: data.extendCount,
+            bidderCount: data.bidderCount,
+            leaderboardList: data.leaderboardList
         }
     });
 }

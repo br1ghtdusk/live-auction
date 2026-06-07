@@ -96,7 +96,8 @@
   left: 0;
   right: 0;
   z-index: 150;
-  max-height: 55vh;
+  max-height: calc(55vh + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
   overflow-y: auto;
 }
 

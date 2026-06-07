@@ -17,6 +17,7 @@ function broadcast(roomId, message) {
     const clients = rooms.get(roomId);
     if (!clients) return;
     const payload = JSON.stringify(message);
+    logger.info(`[WS Broadcast] Room ${roomId}: Type=${message.type}, PayloadSize=${payload.length}`);
     clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(payload);

@@ -34,7 +34,7 @@ export const HeartEffect: React.FC<{ containerRef: React.RefObject<HTMLElement> 
     const el = containerRef.current;
     if (!el) return;
     
-    const handleClick = (e: MouseEvent) => {
+    const handleClick = (e: MouseEvent | TouchEvent) => {
       // Only trigger if clicking on the background, not on buttons
       if ((e.target as HTMLElement).classList.contains('video-background') || 
           (e.target as HTMLElement).classList.contains('auction-page-container')) {
@@ -43,7 +43,11 @@ export const HeartEffect: React.FC<{ containerRef: React.RefObject<HTMLElement> 
     };
     
     el.addEventListener('mousedown', handleClick);
-    return () => el.removeEventListener('mousedown', handleClick);
+    el.addEventListener('touchstart', handleClick, { passive: true });
+    return () => {
+      el.removeEventListener('mousedown', handleClick);
+      el.removeEventListener('touchstart', handleClick);
+    };
   }, [containerRef, addHeart]);
 
   return (

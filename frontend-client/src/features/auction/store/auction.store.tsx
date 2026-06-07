@@ -252,6 +252,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     const handleMessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data);
+        console.log('[WS] Received message:', data.type, data.data);
 
         switch (data.type) {
           case 'room_display': {
@@ -264,6 +265,8 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
             
             if (cleanedAuction) {
               loadAuctionData(cleanedAuction.id);
+              // 初始进入也拉取一次排行榜
+              loadLeaderboard();
             }
             break;
           }
