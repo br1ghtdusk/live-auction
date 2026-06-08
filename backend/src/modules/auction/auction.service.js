@@ -312,6 +312,39 @@ async function checkAndSettleAuctions() {
                 const isBiddingExpired = redisData.status === constants.AUCTION_STATUS.BIDDING && isExpired;
                 const isWaitingExpired = redisData.status === constants.AUCTION_STATUS.WAITING && isExpired;
 
+                // 检查是否到达开始时间但仍处于 WAITING 状态
+                const shouldActivate = 
+                    redisData.status === constants.AUCTION_STATUS.WAITING &&
+                    now >= redisData.scheduled_start_time && 
+                    now < redisData.scheduled_end_time;
+
+                if (shouldActivate) {
+                    logger.info(`[Heartbeat] 守护时钟扫描：捕获到到达开始时间的拍品 ID=${auctionId} (房间: ${roomId})，自动激活为 BIDDING 状态...`);
+                    
+                    // 更新 Redis 状态
+                    await redisRepo.setFields(auctionId, {
+                        status: constants.AUCTION_STATUS.BIDDING,
+                        actual_start_time: now.toString()
+                    });
+                    
+                    // 更新 MySQL 状态
+                    const mysqlAuction = await mysqlRepo.findById(auctionId);
+                    if (mysqlAuction) {
+                        const actualStartTime = time.formatTimeForMySQL(now);
+                        const updatedAt = actualStartTime;
+                        await mysqlRepo.updateStatus(auctionId, constants.AUCTION_STATUS.BIDDING, updatedAt);
+                    }
+                    
+                    logger.info(`[Heartbeat] 拍品 ${auctionId} 已自动激活为 BIDDING 状态`);
+                    
+                    // 广播状态变更
+                    eventBus.emit(constants.WS_EVENTS.SERVER_BROADCAST.ROOM_DISPLAY_UPDATE, {
+                        roomId: roomId
+                    });
+                    
+                    continue; // 跳过后续处理，继续下一个拍品
+                }
+
                 if ((isBiddingExpired || isWaitingExpired) && !redisData.actual_end_time) {
                     logger.info(`[Heartbeat] 守护时钟扫描：捕获到超期未清算商品 ID=${auctionId} (状态: ${redisData.status}，房间: ${roomId})，正在激活结算链...`);
 
@@ -386,13 +419,13 @@ async function createAuction(payload) {
         extendTriggerSeconds,
         autoExtendSeconds,
         maxExtendCount,
-        roomId,  // 新增 roomId 接收
-        merchantId,  // 新增 merchantId 接收
+        roomId,  
+        merchantId,  
     } = payload;
 
     const auctionData = {
         merchant_id: parseInt(merchantId, 10) || 1001,
-        room_id: roomId ?? 101,  // 透传 roomId，默认 101
+        room_id: roomId ?? 101,  
         name,
         description: description || '',
         image_url: imageUrl || '',
@@ -434,7 +467,25 @@ async function getRoomDisplayState(roomId) {
     // 第一步：查找是否存在状态为 'BIDDING' 的拍品
     const biddingAuction = auctions.find(a => a.status === 'BIDDING');
     if (biddingAuction) {
-        const detail = await mysqlRepo.findById(biddingAuction.id);
+        let detail = await mysqlRepo.findById(biddingAuction.id);
+        
+        // 🌟 关键修复：从 Redis 获取实时价格，确保与当前出价一致
+        try {
+            const redisAuction = await redisRepo.findById(biddingAuction.id);
+            if (redisAuction && redisAuction.current_price !== undefined) {
+                detail = {
+                    ...detail,
+                    current_price: Number(redisAuction.current_price),
+                    highest_bidder_id: redisAuction.highest_bidder_id ? Number(redisAuction.highest_bidder_id) : detail.highest_bidder_id,
+                    scheduled_end_time: redisAuction.scheduled_end_time || detail.scheduled_end_time,
+                    extend_count: redisAuction.extend_count ? Number(redisAuction.extend_count) : detail.extend_count,
+                    status: redisAuction.status || detail.status,
+                };
+            }
+        } catch (e) {
+            logger.warn(`[Service] Redis读取失败，使用MySQL数据: ${e.message}`);
+        }
+        
         logger.info(`[Service] 房间 ${roomId} 找到进行中的拍品 ID: ${biddingAuction.id}`);
         return { mode: 'ACTIVE', auction: detail, bidderCount };
     }

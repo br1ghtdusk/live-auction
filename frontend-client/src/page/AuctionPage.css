@@ -1,7 +1,10 @@
+/* 🌟 H5 完美满屏布局 - 最外层容器 */
 .auction-page-container {
   position: relative;
-  min-height: 100vh;
+  height: 100dvh;
   width: 100%;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   background-color: #000;
 }
@@ -37,7 +40,7 @@
   gap: 10px;
   background: rgba(0, 0, 0, 0.7);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px; /* 锐化圆角 */
+  border-radius: 8px;
   padding: 6px 12px;
   animation: floatUp 4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   align-self: flex-start;
@@ -73,7 +76,7 @@
   background: #000;
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px; /* 锐化 */
+  border-radius: 8px;
   padding: 8px 16px;
   font-size: var(--text-xs);
   font-weight: 900;
@@ -90,22 +93,21 @@
   transform: translateY(-1px);
 }
 
+/* 🌟 竞拍卡片容器 - 固定在底部 */
 .auction-card-wrapper {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   z-index: 150;
-  max-height: calc(55vh + env(safe-area-inset-bottom));
-  padding-bottom: env(safe-area-inset-bottom);
-  overflow-y: auto;
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* 移动端适配 */
 @media (max-width: 640px) {
-  .auction-card-wrapper {
-    max-height: 60vh;
-  }
   .bid-barrage-container {
     top: 70px;
     max-height: calc(100vh - 400px);

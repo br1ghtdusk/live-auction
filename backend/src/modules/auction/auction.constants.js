@@ -29,7 +29,8 @@ const WS_EVENTS = {
         BIZ_ERROR: 'biz_error',
         AUCTION_INFO: 'auction_info',
         BID_REJECTED: 'bid_rejected',
-        ROOM_DISPLAY: 'room_display'
+        ROOM_DISPLAY: 'room_display',
+        ROOM_DISPLAY_UPDATE: 'room_display_update'  
     }
 };
 

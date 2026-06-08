@@ -1,10 +1,11 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AuctionProvider } from '../features/auction/store/auction.store';
 import { useAuctionStore } from '../features/auction/hooks/useAuctionstore';
 import AuctionCard from '../features/auction/components/AuctionCard';
 import { ExtensionAlert } from '../features/auction/components/ExtensionAlert';
 import { HeartEffect } from '../components/HeartEffect';
+import { getStoredUserId } from '../hooks/useLocalStorage';
 import './AuctionPage.css';
 
 // ============ 子组件：视频背景 ============
@@ -71,8 +72,8 @@ function AuctionPageBody() {
 export default function AuctionPage() {
   const [searchParams] = useSearchParams();
   
-  // 生成用户ID
-  const myUserId = useRef(Math.floor(Math.random() * 9999) + 1000).current;
+  // 使用 localStorage 持久化用户ID，确保刷新页面后ID不变
+  const myUserId = getStoredUserId();
   
   // 获取房间ID
   const roomId = Number(searchParams.get('roomId')) || 101;

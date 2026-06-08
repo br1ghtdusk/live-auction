@@ -51,7 +51,31 @@ async function getRoom(req, res) {
   }
 }
 
+// 获取房间展示状态（用于前端断线重连和页面唤醒同步）
+async function getRoomDisplayState(req, res) {
+  try {
+    const { roomId } = req.params;
+    const auctionService = require('../auction/auction.service');
+    
+    const displayState = await auctionService.getRoomDisplayState(parseInt(roomId, 10));
+
+    res.json({
+      code: 0,
+      message: 'success',
+      data: displayState,
+    });
+  } catch (error) {
+    console.error('[Controller Error] getRoomDisplayState:', error);
+    res.status(500).json({
+      code: 500,
+      message: 'Internal system error',
+      data: null,
+    });
+  }
+}
+
 module.exports = {
   getRooms,
   getRoom,
+  getRoomDisplayState,
 };

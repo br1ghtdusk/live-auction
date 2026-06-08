@@ -80,7 +80,8 @@ const BID_LUA_SCRIPT = `
         end
     end
 
-    redis.call('HSET', key, 'current_price', tostring(bidAmount))
+    local finalBidAmount = isSold and ceilingPrice or bidAmount
+    redis.call('HSET', key, 'current_price', tostring(finalBidAmount))
     redis.call('HSET', key, 'highest_bidder_id', tostring(bidderId))
     redis.call('HSET', key, 'scheduled_end_time', tostring(newEndTime))
     redis.call('HSET', key, 'extend_count', tostring(newExtendCount))
@@ -98,7 +99,7 @@ const BID_LUA_SCRIPT = `
     return cjson.encode({
         success = true,
         status = newStatus,
-        current_price = bidAmount,
+        current_price = finalBidAmount,
         highest_bidder_id = bidderId,
         scheduled_end_time = newEndTime,
         extend_count = newExtendCount,

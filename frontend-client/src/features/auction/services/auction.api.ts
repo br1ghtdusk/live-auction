@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8081';
+// 🌟 动态获取当前域名/IP，强制使用后端8081端口
+// 不读取 .env 配置，避免 localhost 覆盖动态获取
+const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8081`;
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -33,13 +35,26 @@ export interface BidHistoryResponse {
 export interface LeaderboardResponse {
   success: boolean;
   code: number;
-  data: Array<{
-    userId: number;
-    username: string;
-    avatar: string;
-    maxBidAmount: number;  // 最高出价（分）
-    bidCount: number;      // 出价次数
-  }>;
+  data: {
+    list: Array<{
+      userId: number;
+      username: string;
+      avatar: string;
+      maxBidAmount: number;  // 最高出价（分）
+      bidCount: number;      // 出价次数
+    }>;
+    bidderCount: number;
+  };
+}
+
+export interface RoomDisplayStateResponse {
+  success: boolean;
+  code: number;
+  data: {
+    mode: 'ACTIVE' | 'RESULT' | 'IDLE';
+    auction?: any;
+    bidderCount: number;
+  };
 }
 
 export const auctionApi = {
@@ -67,7 +82,13 @@ export const auctionApi = {
       return response.data;
     } catch (error) {
       console.warn('排行榜接口暂未实现，返回空数据');
-      return { success: true, code: 200, data: [] };
+      return { success: true, code: 200, data: { list: [], bidderCount: 0 } };
     }
+  },
+
+  // 获取房间展示状态（用于断线重连和页面唤醒同步）
+  getRoomDisplayState: async (roomId: number): Promise<RoomDisplayStateResponse> => {
+    const response = await api.get(`/api/rooms/${roomId}/display-state`);
+    return response.data;
   },
 };

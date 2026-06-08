@@ -81,7 +81,10 @@ export const AuctionContext = createContext<ConsoleStore | null>(null);
 
 // ============ 环境变量 ============
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081';
+// 🌟 动态获取 WebSocket 地址，强制使用后端8081端口
+// 不读取 .env 配置，避免 localhost 覆盖动态获取
+const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+const WS_URL = `${protocol}${window.location.hostname}:8081`;
 
 // ============ Provider 组件 ============
 
@@ -179,6 +182,8 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
   const bidTimeoutRef = useRef<number | null>(null);
   const currentAuctionRef = useRef<Auction | null>(null);
   const leaderboardLoadingRef = useRef(false);
+  const lastSyncTimeRef = useRef<number>(0);  // 记录最后一次同步时间
+  const reconnectDelayRef = useRef<number>(1000);  // 重连延迟，指数退避
 
   // 同步 currentAuction 到 ref
   useEffect(() => {
@@ -200,8 +205,6 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
         if (res.data && res.data.list) {
           setLeaderboard(res.data.list);
           setBidderCount(res.data.bidderCount);
-        } else {
-          setLeaderboard(res.data);
         }
       }
     } catch (err) {
@@ -250,6 +253,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
   useEffect(() => {
     // 消息处理函数（使用闭包捕获最新的 state setters）
     const handleMessage = (event: MessageEvent) => {
+      // ... 保持原有逻辑不变 ...
       try {
         const data = JSON.parse(event.data);
         console.log('[WS] Received message:', data.type, data.data);
@@ -262,6 +266,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
             setCurrentAuction(cleanedAuction);
             if (bidderCount !== undefined) setBidderCount(bidderCount);
             setLoading(false); // 数据加载完成
+            lastSyncTimeRef.current = Date.now(); // 更新同步时间
             
             if (cleanedAuction) {
               loadAuctionData(cleanedAuction.id);
@@ -361,47 +366,120 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
       }
     };
 
-    // 初始化
-    resetStore();
-    setLoading(true);
+    // 重置重连延迟
+    reconnectDelayRef.current = 1000;
 
-    // WebSocket 连接（主要数据来源）
-    const sanitizedWsUrl = `${WS_URL}/?roomId=${roomId}`.replace(/\/+\?/, '/?');
-    const ws = new WebSocket(sanitizedWsUrl);
-    
-    ws.onopen = () => {
-      console.log('[WS] OPEN');
-      setConnected(true);
-      setError(null); // 连接成功时清除错误状态
+    // 创建 WebSocket 连接
+    const createConnection = () => {
+      // 初始化
+      if (wsRef.current?.readyState !== WebSocket.CLOSED) {
+        wsRef.current?.close();
+      }
+
+      setLoading(true);
+
+      // WebSocket 连接（主要数据来源）
+      console.log("WS_URL =", WS_URL);
+      const sanitizedWsUrl = `${WS_URL}/?roomId=${roomId}`.replace(/\/+\?/, '/?');
+      console.log("sanitizedWsUrl =", sanitizedWsUrl);
+      const ws = new WebSocket(sanitizedWsUrl);
+      
+      ws.onopen = () => {
+        console.log('[WS] OPEN');
+        setConnected(true);
+        setError(null);
+        // 🌟 重连成功后立即触发全量状态同步
+        reconnectDelayRef.current = 1000; // 重置延迟
+        fetchCurrentAuction();
+      };
+      
+      ws.onclose = (e) => {
+        console.log('[WS] CLOSE', {
+          code: e.code,
+          reason: e.reason,
+          wasClean: e.wasClean,
+        });
+        setConnected(false);
+        
+        // 🌟 自动重连（指数退避）
+        const delay = reconnectDelayRef.current;
+        console.log(`[WS] 准备 ${delay}ms 后重连`);
+        setTimeout(() => {
+          createConnection();
+        }, delay);
+        
+        // 指数退避：每次失败后延迟翻倍，最大 16 秒
+        reconnectDelayRef.current = Math.min(delay * 2, 16000);
+      };
+      
+      ws.onerror = (event) => {
+        console.error('[WS] ERROR', event);
+      };
+      
+      ws.onmessage = handleMessage;
+      wsRef.current = ws;
     };
-    
-    ws.onclose = (e) => {
-      console.log('[WS] CLOSE', {
-        code: e.code,
-        reason: e.reason,
-        wasClean: e.wasClean,
-      });
-      setConnected(false);
-    };
-    
-    ws.onerror = (event) => {
-      console.error('[WS] ERROR', event);
-      // 不直接设置全局错误状态，避免 StrictMode 假报错污染
-    };
-    
-    ws.onmessage = handleMessage;
-    wsRef.current = ws;
+
+    // 立即创建连接
+    createConnection();
 
     // 清理函数：页面退出时关闭连接，防止内存泄漏
     return () => {
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        ws.close();
+      if (wsRef.current) {
+        wsRef.current.onclose = null; // 防止触发重连
+        wsRef.current.close();
+        wsRef.current = null;
       }
       if (bidTimeoutRef.current) {
         clearTimeout(bidTimeoutRef.current);
       }
     };
   }, [roomId]); // 依赖数组只有 roomId，确保 WebSocket 不会因业务状态变化而重连
+
+  // 🌟 页面唤醒强制同步：监听 visibilitychange
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        const timeSinceLastSync = now - lastSyncTimeRef.current;
+        
+        // 如果距上次同步超过 10 秒，强制刷新状态
+        if (timeSinceLastSync > 10000) {
+          console.log(`[Sync] 页面唤醒，距上次同步 ${timeSinceLastSync}ms，触发强制同步`);
+          await fetchCurrentAuction();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  // 拉取当前拍卖全量状态
+  const fetchCurrentAuction = useCallback(async () => {
+    try {
+      const res = await auctionApi.getRoomDisplayState(roomId);
+      if (res.code === 0 || res.code === 200) {
+        const { mode, auction, bidderCount } = res.data;
+        const cleanedAuction = auction ? sanitizeAuctionData(auction) : null;
+        
+        setRoomDisplayMode(mode);
+        setCurrentAuction(cleanedAuction);
+        if (bidderCount !== undefined) setBidderCount(bidderCount);
+        setLoading(false);
+        lastSyncTimeRef.current = Date.now();
+        
+        if (cleanedAuction) {
+          loadAuctionData(cleanedAuction.id);
+          loadLeaderboard();
+        }
+      }
+    } catch (err) {
+      console.error('拉取当前拍卖状态失败:', err);
+    }
+  }, [roomId, loadAuctionData]);
 
   const store: ConsoleStore = {
     roomDisplayMode,
@@ -414,7 +492,6 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     isConnected,
     isSubmitting,
     myUserId,
-    // 延时提醒
     showExtensionAlert,
     extensionSeconds,
     alertTrigger,

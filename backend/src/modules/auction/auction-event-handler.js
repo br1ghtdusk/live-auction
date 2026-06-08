@@ -80,11 +80,29 @@ async function handleRoomDisplay(data) {
     });
 }
 
+// 处理房间状态更新广播（用于自动激活拍品后通知所有客户端）
+async function handleRoomDisplayUpdate(data) {
+    if (!wss || !auctionService) return;
+    
+    const { roomId } = data;
+    try {
+        const displayState = await auctionService.getRoomDisplayState(roomId);
+        wss.broadcast(roomId, {
+            type: 'room_display',
+            data: displayState
+        });
+        logger.info(`[EventHandler] 已广播房间 ${roomId} 状态更新: ${displayState.mode}`);
+    } catch (error) {
+        logger.error('[EventHandler] 获取房间显示状态失败:', error);
+    }
+}
+
 function init() {
     eventBus.on(WS_EVENTS.PRICE_CHANGED, handlePriceUpdate);
     eventBus.on(WS_EVENTS.AUCTION_ENDED, handleAuctionEnded);
     eventBus.on(WS_EVENTS.BID_REJECTED, handleBidRejected);
     eventBus.on(WS_EVENTS.ROOM_DISPLAY, handleRoomDisplay);
+    eventBus.on(WS_EVENTS.ROOM_DISPLAY_UPDATE, handleRoomDisplayUpdate);  // ：监听状态更新广播
     logger.info('[EventHandler] 拍卖事件监听器初始化完成');
 }
 

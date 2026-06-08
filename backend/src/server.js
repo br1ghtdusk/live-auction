@@ -152,9 +152,9 @@ async function start() {
         logger.info('[Server Master] 步骤5: 注册停机处理器...');
         setupGracefulShutdown(server);
 
-        server.listen(config.port, () => {
-            logger.info(`[Server Master] 🚀 直播竞拍大师后端中枢正常起航: http://localhost:${config.port}`);
-            logger.info(`[Server Master] 🎯 实时 WS 数据交换链路网关处于完全就绪状态`);
+        server.listen(config.port, '0.0.0.0',() => {
+            logger.info(`[Server Master]  直播竞拍后端中枢正常起航`);
+            logger.info(`[Server Master]  实时 WS 数据交换链路网关处于完全就绪状态`);
         });
     } catch (error) {
         logger.error('[Server Fatal] 服务网关引擎启动崩溃:', error);

@@ -63,7 +63,7 @@ const AuctionCard = () => {
         <div className="idle-content">
           <span className="idle-icon">🎁</span>
           <span className="idle-title">等一下下</span>
-          <span className="idle-subtitle">主播正在准备宝贝...</span>
+          <span className="idle-subtitle">主播正在准备商品...</span>
           <span className="idle-hint">✨ 下一件宝贝即将登场，敬请期待！</span>
         </div>
       </div>
@@ -237,7 +237,7 @@ const AuctionCard = () => {
             transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
             className="expandable-content"
           >
-            {/* 结果遮罩 */}
+            {/* 🌟 结果状态区 - 固定在顶部，不被裁剪 */}
             <div className="result-overlay">
               <div className="result-content">
                 {auction?.status === 'SOLD' ? (
@@ -259,38 +259,22 @@ const AuctionCard = () => {
               </div>
             </div>
 
-            {/* 商品图片 */}
-            <div className="card-image-wrapper small">
-              {auction?.image_url ? (
-                <img
-                  src={auction.image_url}
-                  alt={auction.name || '拍品'}
-                  className="card-image"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                    (e.target as HTMLImageElement).parentElement?.classList.add('is-missing');
-                  }}
-                />
-              ) : (
-                <div className="image-placeholder">
-                  <span className="placeholder-icon">🖼️</span>
-                </div>
-              )}
-            </div>
-
-            {/* 结果信息 - 精简 */}
-            <div className="card-body result-body">
+            {/* 🌟 结果信息区 - 独立布局，避免拥挤 */}
+            <div className="result-body">
+              {/* 商品名称 */}
               <h2 className="card-title">{auction?.name || '未命名拍品'}</h2>
 
+              {/* 成交价格 */}
               <div className="result-price-section">
                 <span className="result-label">
                   {auction?.status === 'SOLD' ? '成交价' : '最终价'}
                 </span>
-                <span className={`result-price ${auction?.status === 'SOLD' ? 'sold' : ''}`}>
+                <span className={`result-value ${auction?.status === 'SOLD' ? 'sold' : ''}`}>
                   {formatPrice(auction?.current_price || 0)}
                 </span>
               </div>
 
+              {/* 获胜者勋章 */}
               {auction?.status === 'SOLD' && auction?.highest_bidder_id && (
                 <div className="winner-section">
                   <span className="winner-badge">🏆 获胜者</span>

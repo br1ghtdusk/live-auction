@@ -117,8 +117,8 @@ const AuctionForm = () => {
         extendTriggerSeconds: values.extendTriggerSeconds,
         autoExtendSeconds: values.autoExtendSeconds,
         maxExtendCount: values.maxExtendCount,
-        roomId: values.roomId,  // 新增 roomId
-        merchantId,  // 新增商家 ID
+        roomId: values.roomId,  
+        merchantId, 
       };
 
       console.log('[AuctionForm] 提交数据:', payload);
