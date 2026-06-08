@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.env.*
+.git
+.impeccable
+GEMINI.md
+README.md

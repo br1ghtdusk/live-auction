@@ -14,7 +14,10 @@
     "axios": "^1.17.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.40.0",
+<<<<<<< HEAD
     "lucide-react": "^1.17.0",
+=======
+>>>>>>> 0d269d4 (feat: implement auction system with comprehensive mobile optimization, integrated leaderboard, and docker containerization)
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.17.0",

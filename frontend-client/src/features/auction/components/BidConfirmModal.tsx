@@ -40,7 +40,7 @@ export const BidConfirmModal: React.FC<BidConfirmModalProps> = ({
               className="bid-confirm-dialog"
             >
               <div className="dialog-header">
-                <Gavel className="w-6 h-6 text-amber-500 animate-bounce" />
+                <Gavel className="w-8 h-8 text-amber-500 animate-bounce mb-2" />
                 <h3 className="dialog-title">确认您的出价</h3>
               </div>
               

@@ -1,10 +1,11 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AuctionProvider } from '../features/auction/store/auction.store';
 import { useAuctionStore } from '../features/auction/hooks/useAuctionstore';
 import AuctionCard from '../features/auction/components/AuctionCard';
 import { ExtensionAlert } from '../features/auction/components/ExtensionAlert';
 import { HeartEffect } from '../components/HeartEffect';
+import { RoomListDrawer } from '../features/auction/components/RoomListDrawer';
 import { getStoredUserId } from '../hooks/useLocalStorage';
 import './AuctionPage.css';
 
@@ -54,16 +55,44 @@ const BidBarrageContainer = () => {
 // ============ 内容组件：真正的页面主体 ============
 function AuctionPageBody() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [isRoomListOpen, setIsRoomListOpen] = useState(false);
+  const store = useAuctionStore();
+  const roomId = Number(searchParams.get('roomId')) || 101;
+  const roomName = store?.roomName || '加载中...';
+
+  const handleSwitchRoom = (newRoomId: number) => {
+    setSearchParams({ roomId: newRoomId.toString() });
+  };
 
   return (
     <div ref={containerRef} className="auction-page-container noise-overlay">
       <VideoBackground />
+      
+      {/* 顶部交互层 */}
+      <div className="page-header-actions">
+        <button 
+          className="rooms-trigger-btn"
+          onClick={() => setIsRoomListOpen(true)}
+        >
+          <span className="rooms-icon">📡</span>
+          {roomName}
+        </button>
+      </div>
+
       <ExtensionAlert />
-      <HeartEffect containerRef={containerRef as unknown as React.RefObject<HTMLElement>} />
+      <HeartEffect containerRef={containerRef} />
       <BidBarrageContainer />
       <div className="auction-card-wrapper">
         <AuctionCard />
       </div>
+
+      <RoomListDrawer 
+        isOpen={isRoomListOpen}
+        onClose={() => setIsRoomListOpen(false)}
+        currentRoomId={roomId}
+        onSwitchRoom={handleSwitchRoom}
+      />
     </div>
   );
 }
@@ -72,7 +101,7 @@ function AuctionPageBody() {
 export default function AuctionPage() {
   const [searchParams] = useSearchParams();
   
-  // 使用 localStorage 持久化用户ID，确保刷新页面后ID不变
+  // 使用 localStorage 持久化用户ID
   const myUserId = getStoredUserId();
   
   // 获取房间ID

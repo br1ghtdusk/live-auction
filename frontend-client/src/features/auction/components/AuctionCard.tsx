@@ -33,6 +33,7 @@ const AuctionCard = () => {
       loadLeaderboard();
     }
   }, [isExpanded, auction?.id]);
+
   const displayStatus = useAuctionStatus(auction);
   const isWinning = auction?.highest_bidder_id === myUserId;
 
@@ -83,8 +84,8 @@ const AuctionCard = () => {
           <div className="live-indicator connected">
             <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-success shadow-[0_0_8px_rgba(16,185,129,0.6)]' : 'bg-red-500'}`} />
             <span className="font-black tabular">直播中</span>
-            </div>
-            {!isExpanded && (
+          </div>
+          {!isExpanded && (
              <div className="flex items-center">
                <div className="collapsed-info-item">
                  <span className="info-label">当前价</span>
@@ -96,8 +97,8 @@ const AuctionCard = () => {
                  </div>
                )}
              </div>
-            )}
-            </div>
+          )}
+        </div>
 
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -239,7 +240,7 @@ const AuctionCard = () => {
             transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
             className="expandable-content"
           >
-            {/* 🌟 结果状态区 - 固定在顶部，不被裁剪 */}
+            {/* 结果状态区 */}
             <div className="result-overlay">
               <div className="result-content">
                 {auction?.status === 'SOLD' ? (
@@ -261,12 +262,10 @@ const AuctionCard = () => {
               </div>
             </div>
 
-            {/* 🌟 结果信息区 - 独立布局，避免拥挤 */}
+            {/* 结果信息区 */}
             <div className="result-body">
-              {/* 商品名称 */}
               <h2 className="card-title">{auction?.name || '未命名拍品'}</h2>
 
-              {/* 成交价格 */}
               <div className="result-price-section">
                 <span className="result-label">
                   {auction?.status === 'SOLD' ? '成交价' : '最终价'}
@@ -276,7 +275,6 @@ const AuctionCard = () => {
                 </span>
               </div>
 
-              {/* 获胜者勋章 */}
               {auction?.status === 'SOLD' && auction?.highest_bidder_id && (
                 <div className="winner-section">
                   <span className="winner-badge">🏆 获胜者</span>
@@ -293,7 +291,6 @@ const AuctionCard = () => {
     </div>
   );
 
-  // 判断是活动模式还是结果模式
   const isResultMode = ['SOLD', 'CANCELLED', 'FAILED', 'FINISHED'].includes(auction?.status || '');
   
   return (

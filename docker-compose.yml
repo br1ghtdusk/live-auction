@@ -1,55 +1,85 @@
 services:
+  # 1. 数据库: MySQL 8.0
   mysql:
-    image: mysql:8.0.42
-    container_name: auction-mysql
+    image: mysql:8.0.44
+    container_name: auction_mysql
+    restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: live_auction
-      MYSQL_USER: auction
-      MYSQL_PASSWORD: auction123
     ports:
       - "3306:3306"
     volumes:
-      - ./backend/database/:/docker-entrypoint-initdb.d/
-      - mysql-data:/var/lib/mysql
+      - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # 2. 缓存: Redis
   redis:
     image: redis:alpine
-    container_name: auction-redis
+    container_name: auction_redis
+    restart: always
     ports:
       - "6379:6379"
     volumes:
-      - redis-data:/data
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # 3. 后端中枢 (Backend)
   backend:
     build: ./backend
-    container_name: auction-backend
-    environment:
-      DB_HOST: mysql
-      DB_USER: root
-      DB_PASSWORD: root123
-      DB_NAME: live_auction
-      REDIS_URL: redis://redis:6379
-      PORT: 8081
+    container_name: auction_backend
+    restart: always
     ports:
       - "8081:8081"
+    environment:
+      - DB_HOST=mysql
+      - DB_USER=root
+      - DB_PASSWORD=rootpassword
+      - DB_NAME=live_auction
+      - REDIS_URL=redis://redis:6379
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # 4. 用户竞拍端 (Frontend-Client)
+  # 访问地址: http://localhost:8082
+  frontend-client:
+    build: 
+      context: ./frontend-client
+      args:
+        - VITE_WS_URL=ws://localhost:8082/ws
+        - VITE_API_URL=http://localhost:8082/api
+    container_name: auction_client
     restart: always
+    ports:
+      - "8082:80"
+    depends_on:
+      - backend
+
+  # 5. 主播管理端 (Frontend-Admin)
+  # 访问地址: http://localhost:8083
+  frontend-admin:
+    build:
+      context: ./frontend-admin
+      args:
+        - VITE_API_URL=http://localhost:8083/api
+    container_name: auction_admin
+    restart: always
+    ports:
+      - "8083:80"
+    depends_on:
+      - backend
 
 volumes:
-  mysql-data:
-  redis-data:
+  mysql_data:
+  redis_data:
