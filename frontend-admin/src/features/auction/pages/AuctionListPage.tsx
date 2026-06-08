@@ -348,7 +348,7 @@ const AuctionListPage = () => {
         okText="保存修改"
         cancelText="取消"
         width={600}
-        destroyOnClose
+        destroyOnHidden={true}
       >
         <Form
           form={form}
