@@ -207,12 +207,13 @@ async function placeBid(roomId, auctionId, data) {
                     );
                 }
 
-                mysqlRepo.insertBidRecord(
+                // 必须 await 插入记录，否则接下来的 getLeaderboard 可能读不到最新数据
+                await mysqlRepo.insertBidRecord(
                     auctionId,
                     userId,
                     currentPrice,
                     updatedAt
-                ).catch(err => logger.error('[Service] MySQL insert bid record failed:', err));
+                );
 
                 logger.info(`[Service] MySQL 同步完成: auctionId=${auctionId}, price=${currentPrice}`);
             } catch (syncError) {
@@ -220,7 +221,8 @@ async function placeBid(roomId, auctionId, data) {
             }
         }
 
-        syncToMySQL().catch(err => logger.error('[Service] MySQL 异步同步失败:', err));
+        // 等待同步完成后再获取排行榜，确保数据实时性
+        await syncToMySQL();
 
         if (is_sold) {
             const TTL_SECONDS = 86400;
@@ -236,6 +238,10 @@ async function placeBid(roomId, auctionId, data) {
             return { success: true, type: 'auction_ended', winnerId: updatedAuction.highest_bidder_id, finalPrice: updatedAuction.current_price };
         }
 
+        // 获取最新排行榜和出价人数
+        const leaderboardData = await getLeaderboard(auctionId);
+        logger.info(`[Service] 实时同步数据: auctionId=${auctionId}, bidderCount=${leaderboardData.bidderCount}, listSize=${leaderboardData.list.length}`);
+
         eventBus.emit(constants.WS_EVENTS.SERVER_BROADCAST.PRICE_CHANGED, {
             roomId,
             currentPrice: updatedAuction.current_price,
@@ -246,7 +252,9 @@ async function placeBid(roomId, auctionId, data) {
             scheduled_start_time: updatedAuction.scheduled_start_time,
             start_price: updatedAuction.start_price,
             bid_increment: updatedAuction.bid_increment,
-            ceiling_price: updatedAuction.ceiling_price
+            ceiling_price: updatedAuction.ceiling_price,
+            bidderCount: leaderboardData.bidderCount,
+            leaderboardList: leaderboardData.list
         });
 
         return { success: true, type: 'price_update' };
@@ -415,15 +423,20 @@ async function getRoomDisplayState(roomId) {
     
     if (auctions.length === 0) {
         logger.info(`[Service] 房间 ${roomId} 没有任何拍品记录`);
-        return { mode: 'IDLE', auction: null };
+        return { mode: 'IDLE', auction: null, bidderCount: 0 };
     }
     
+    // 获取当前参拍人数
+    const targetAuction = auctions.find(a => a.status === 'BIDDING') || auctions[0];
+    const leaderboardData = await getLeaderboard(targetAuction.id);
+    const bidderCount = leaderboardData.bidderCount;
+
     // 第一步：查找是否存在状态为 'BIDDING' 的拍品
     const biddingAuction = auctions.find(a => a.status === 'BIDDING');
     if (biddingAuction) {
         const detail = await mysqlRepo.findById(biddingAuction.id);
         logger.info(`[Service] 房间 ${roomId} 找到进行中的拍品 ID: ${biddingAuction.id}`);
-        return { mode: 'ACTIVE', auction: detail };
+        return { mode: 'ACTIVE', auction: detail, bidderCount };
     }
     
     // 第二步：查找所有状态为 'WAITING' 的拍品，取最临近开始的那一件
@@ -436,7 +449,7 @@ async function getRoomDisplayState(roomId) {
         const nearestWaiting = waitingAuctions[0];
         const detail = await mysqlRepo.findById(nearestWaiting.id);
         logger.info(`[Service] 房间 ${roomId} 找到即将开始的拍品 ID: ${nearestWaiting.id}`);
-        return { mode: 'ACTIVE', auction: detail };
+        return { mode: 'ACTIVE', auction: detail, bidderCount };
     }
     
     // 第三步：查找历史结束的拍品，执行 5 分钟缓冲期判定
@@ -460,7 +473,7 @@ async function getRoomDisplayState(roomId) {
         if (timeSinceEnd <= FIVE_MINUTES_MS) {
             const detail = await mysqlRepo.findById(latestEnded.id);
             logger.info(`[Service] 房间 ${roomId} 找到刚结束的拍品 ID: ${latestEnded.id}，结束于 ${Math.floor(timeSinceEnd / 1000)} 秒前`);
-            return { mode: 'RESULT', auction: detail };
+            return { mode: 'RESULT', auction: detail, bidderCount };
         }
         
         logger.info(`[Service] 房间 ${roomId} 最新拍品已结束超过 5 分钟`);
@@ -468,7 +481,7 @@ async function getRoomDisplayState(roomId) {
     
     // 第四步：以上皆无，返回 IDLE
     logger.info(`[Service] 房间 ${roomId} 处于 IDLE 状态`);
-    return { mode: 'IDLE', auction: null };
+    return { mode: 'IDLE', auction: null, bidderCount: 0 };
 }
 
 async function getActiveAuctionByRoomId(roomId) {
@@ -643,13 +656,24 @@ async function getBidHistory(auctionId) {
  */
 async function getLeaderboard(auctionId) {
     const records = await mysqlRepo.findLeaderboardByAuctionId(auctionId);
-    return records.map(record => ({
-        userId: record.userId,
-        username: `用户${record.userId}`,  // 由于没有 users 表，使用用户ID作为昵称
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${record.userId}`,  // 生成随机头像
-        maxBidAmount: record.maxBidAmount,  // 保持分为单位
-        bidCount: record.bidCount
-    }));
+    
+    // 获取唯一参与人数
+    const [rows] = await db.getPool().query(
+        `SELECT COUNT(DISTINCT user_id) AS bidderCount FROM bid_records WHERE auction_id = ?`,
+        [auctionId]
+    );
+    const bidderCount = rows[0]?.bidderCount || 0;
+
+    return {
+        list: records.map(record => ({
+            userId: record.userId,
+            username: `用户${record.userId}`,
+            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${record.userId}`,
+            maxBidAmount: record.maxBidAmount,
+            bidCount: record.bidCount
+        })),
+        bidderCount
+    };
 }
 
 module.exports = {

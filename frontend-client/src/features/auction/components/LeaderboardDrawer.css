@@ -3,7 +3,7 @@
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.7);
-  z-index: 100;
+  z-index: 1000;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -23,15 +23,16 @@
 .leaderboard-drawer {
   width: 100%;
   max-width: 400px;
-  background: rgba(20, 20, 20, 0.95);
-  backdrop-filter: blur(20px);
-  border-radius: 24px 24px 0 0;
-  padding: 20px;
-  padding-bottom: calc(20px + env(safe-area-inset-bottom));
-  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-  max-height: 70vh;
+  background: var(--color-bg);
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px 16px 0 0;
+  padding: 24px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  max-height: 75vh;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 -20px 80px rgba(0, 0, 0, 0.9);
 }
 
 @keyframes slideUp {
@@ -56,20 +57,21 @@
 }
 
 .leaderboard-title {
-  font-size: 1.35rem;
-  font-weight: 700;
+  font-size: var(--text-xl);
+  font-weight: 950;
   color: #fff;
   margin: 0;
+  letter-spacing: -0.03em;
 }
 
 .close-button {
-  width: 36px;
-  height: 36px;
+  width: 44px; /* Increased for mobile touch (44px min) */
+  height: 44px;
   border-radius: 50%;
   border: none;
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
-  font-size: 1rem;
+  font-size: var(--text-base);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -92,7 +94,7 @@
   text-align: center;
   padding: 40px 20px;
   color: rgba(255, 255, 255, 0.6);
-  font-size: 1rem;
+  font-size: var(--text-base);
 }
 
 /* 列表 */
@@ -110,48 +112,51 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.05);
+  padding: 14px 16px;
+  background: var(--color-surface);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 12px;
-  transition: background 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .leaderboard-item:hover {
   background: rgba(255, 255, 255, 0.1);
+  transform: translateX(4px);
 }
 
 /* 排名徽章 */
 .rank-badge {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.9rem;
-  font-weight: 700;
-  border-radius: 8px;
+  font-size: var(--text-sm);
+  font-weight: 900;
+  border-radius: 10px;
   flex-shrink: 0;
 }
 
 .rank-gold {
-  background: linear-gradient(135deg, #FFD700, #FFA500);
+  background: #FFD700;
   color: #000;
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.2);
 }
 
 .rank-silver {
-  background: linear-gradient(135deg, #C0C0C0, #A8A8A8);
+  background: #E2E8F0;
   color: #000;
 }
 
 .rank-bronze {
-  background: linear-gradient(135deg, #CD7F32, #B87333);
+  background: #B45309;
   color: #fff;
 }
 
 .rank-default {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 0.8rem;
+  background: #000;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--color-muted);
 }
 
 /* 用户头像 */
@@ -168,24 +173,27 @@
 .user-name {
   flex: 1;
   color: #fff;
-  font-size: 0.95rem;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: 800;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 
 /* 出价次数 */
 .bid-count {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 0.8rem;
+  color: var(--color-muted);
+  font-size: var(--text-xs);
   flex-shrink: 0;
 }
 
 /* 最高出价 */
 .max-bid {
-  color: #f43f5e;
-  font-size: 1rem;
-  font-weight: 700;
+  color: var(--color-primary);
+  font-size: var(--text-base);
+  font-weight: 900;
   flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
 }

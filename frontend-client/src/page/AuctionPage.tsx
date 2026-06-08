@@ -1,38 +1,47 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AuctionProvider } from '../features/auction/store/auction.store';
 import { useAuctionStore } from '../features/auction/hooks/useAuctionstore';
 import AuctionCard from '../features/auction/components/AuctionCard';
-import { LeaderboardDrawer } from '../features/auction/components/LeaderboardDrawer';
 import { ExtensionAlert } from '../features/auction/components/ExtensionAlert';
+import { HeartEffect } from '../components/HeartEffect';
 import './AuctionPage.css';
 
 // ============ 子组件：视频背景 ============
 const VideoBackground = () => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.play().catch(err => {
+        console.warn('视频自动播放被拦截，正在尝试重试...', err);
+      });
+    }
+  }, []);
+
   return (
     <video
+      ref={videoRef}
       autoPlay
       loop
       muted
       playsInline
       className="video-background"
-    >
-      <source
-        src="https://www.w3schools.com/html/mov_bbb.mp4"
-        type="video/mp4"
-      />
-    </video>
+      style={{ pointerEvents: 'none' }}
+      src="https://media.w3.org/2010/05/sintel/trailer.mp4"
+    />
   );
 };
 
 // ============ 子组件：出价弹幕容器 ============
 const BidBarrageContainer = () => {
-  const { bidsList } = useAuctionStore();
+  const store = useAuctionStore();
+  const bidsList = store?.bidsList || [];
 
   return (
     <div className="bid-barrage-container">
-      {bidsList.slice(0, 10).map((bid: any) => (
-        <div key={bid.id} className="bid-barrage-item">
+      {Array.isArray(bidsList) && bidsList.slice(0, 10).map((bid: any) => (
+        <div key={bid.id || Math.random()} className="bid-barrage-item">
           <span className="barrage-user">👤 用户{bid.userId}</span>
           <span className="barrage-price">¥{bid.amount}.00</span>
         </div>
@@ -41,43 +50,19 @@ const BidBarrageContainer = () => {
   );
 };
 
-// ============ 子组件：排行榜按钮 ============
-const LeaderboardButton = ({ onClick }: { onClick: () => void }) => {
-  return (
-    <button
-      className="leaderboard-button"
-      onClick={onClick}
-    >
-      🏆 排行榜
-    </button>
-  );
-};
-
 // ============ 内容组件：真正的页面主体 ============
 function AuctionPageBody() {
-  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
-  const { loadLeaderboard } = useAuctionStore();
-
-  const handleLeaderboardClick = () => {
-    loadLeaderboard();
-    setIsLeaderboardOpen(true);
-  };
+  const containerRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="auction-page-container">
+    <div ref={containerRef} className="auction-page-container noise-overlay">
       <VideoBackground />
       <ExtensionAlert />
+      <HeartEffect containerRef={containerRef} />
       <BidBarrageContainer />
-      <LeaderboardButton onClick={handleLeaderboardClick} />
       <div className="auction-card-wrapper">
         <AuctionCard />
       </div>
-      
-      {/* 排行榜抽屉 */}
-      <LeaderboardDrawer 
-        isOpen={isLeaderboardOpen} 
-        onClose={() => setIsLeaderboardOpen(false)} 
-      />
     </div>
   );
 }
