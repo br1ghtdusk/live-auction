@@ -204,6 +204,20 @@ async function executeBidLua(auctionId, bidderId, bidAmount, now) {
     return JSON.parse(result);
 }
 
+async function setPaymentStatus(auctionId, status) {
+    const key = constants.REDIS_KEYS.getPaymentStatusKey(auctionId);
+    const client = redis.getClient();
+    await client.set(key, String(status));
+    return key;
+}
+
+async function getPaymentStatus(auctionId) {
+    const key = constants.REDIS_KEYS.getPaymentStatusKey(auctionId);
+    const client = redis.getClient();
+    const status = await client.get(key);
+    return status || null;
+}
+
 module.exports = {
     flushAll,
     save,
@@ -216,5 +230,7 @@ module.exports = {
     expire,
     acquireLock,
     releaseLock,
-    executeBidLua
+    executeBidLua,
+    setPaymentStatus,
+    getPaymentStatus
 };

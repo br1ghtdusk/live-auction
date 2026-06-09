@@ -228,6 +228,14 @@ async function placeBid(roomId, auctionId, data) {
             const TTL_SECONDS = 86400;
             await redisRepo.expire(auctionId, TTL_SECONDS);
             logger.info(`[Service] 已为一口价成交商品 ${auctionId} 设置 TTL 过期时间: ${TTL_SECONDS} 秒 (24小时)`);
+
+            logger.info(`[Service] 启动支付超时定时器: auctionId=${auctionId}`);
+            startPaymentTimer(
+                auctionId,
+                roomId,
+                updatedAuction.highest_bidder_id,
+                updatedAuction.current_price
+            );
             
             eventBus.emit(constants.WS_EVENTS.SERVER_BROADCAST.AUCTION_ENDED, {
                 roomId,
@@ -378,6 +386,14 @@ async function checkAndSettleAuctions() {
                             newState.highest_bidder_id,
                             newState.final_price,
                             updatedAt
+                        );
+
+                        logger.info(`[Heartbeat] 启动支付超时定时器: auctionId=${auctionId}`);
+                        startPaymentTimer(
+                            auctionId,
+                            roomId,
+                            newState.highest_bidder_id,
+                            newState.final_price
                         );
                     }
 
@@ -727,6 +743,105 @@ async function getLeaderboard(auctionId) {
     };
 }
 
+const paymentTimers = new Map();
+
+function startPaymentTimer(auctionId, roomId, winnerId, finalPrice) {
+    if (paymentTimers.has(auctionId)) {
+        clearTimeout(paymentTimers.get(auctionId));
+        logger.info(`[Payment] 拍品 ${auctionId} 已存在支付定时器，已清除并重新启动`);
+    }
+
+    const timer = setTimeout(async () => {
+        logger.info(`[Payment] 拍品 ${auctionId} 支付超时（${constants.PAYMENT_TIMEOUT_MS}ms），触发流拍`);
+        paymentTimers.delete(auctionId);
+
+        await redisRepo.setPaymentStatus(auctionId, constants.PAYMENT_STATUS.CANCELLED);
+        logger.info(`[Payment] Redis 中标记拍品 ${auctionId} 为流拍`);
+
+        const now = new Date();
+        try {
+            await mysqlRepo.updateOrderStatusByAuctionId(auctionId, constants.PAYMENT_STATUS.CANCELLED, now);
+            logger.info(`[Payment] MySQL 中更新拍品 ${auctionId} 订单状态为 CANCELLED`);
+        } catch (error) {
+            logger.error(`[Payment] MySQL 更新订单状态失败：${error.message}`);
+        }
+
+        eventBus.emit('auction_payment_timeout', {
+            auctionId,
+            roomId,
+            winnerId,
+            message: '支付超时，商品流拍'
+        });
+    }, constants.PAYMENT_TIMEOUT_MS);
+
+    paymentTimers.set(auctionId, timer);
+    logger.info(`[Payment] 拍品 ${auctionId} 已启动支付定时器，${constants.PAYMENT_TIMEOUT_MS}ms 后超时`);
+}
+
+function clearPaymentTimer(auctionId) {
+    const timer = paymentTimers.get(auctionId);
+    if (timer) {
+        clearTimeout(timer);
+        paymentTimers.delete(auctionId);
+        logger.info(`[Payment] 拍品 ${auctionId} 已清除支付定时器`);
+        return true;
+    }
+    return false;
+}
+
+async function payAuction(auctionId, userId) {
+    logger.info(`[Payment] 收到支付请求：auctionId=${auctionId}, userId=${userId}`);
+
+    const auction = await redisRepo.findById(auctionId);
+    if (!auction) {
+        logger.warn(`[Payment] 拍品 ${auctionId} 不存在`);
+        return { success: false, code: 'AUCTION_NOT_FOUND', message: '拍品不存在' };
+    }
+
+    if (auction.status !== constants.AUCTION_STATUS.SOLD) {
+        logger.warn(`[Payment] 拍品 ${auctionId} 状态为 ${auction.status}，不可支付`);
+        return { success: false, code: 'AUCTION_NOT_SOLD', message: '该拍品当前状态不可支付' };
+    }
+
+    if (auction.highest_bidder_id !== Number(userId)) {
+        logger.warn(`[Payment] 用户 ${userId} 不是获胜者，真实获胜者=${auction.highest_bidder_id}`);
+        return { success: false, code: 'NOT_WINNER', message: '您不是该拍品的获胜者，无权支付' };
+    }
+
+    const currentPaymentStatus = await redisRepo.getPaymentStatus(auctionId);
+    if (currentPaymentStatus === constants.PAYMENT_STATUS.PAID) {
+        logger.info(`[Payment] 拍品 ${auctionId} 已支付`);
+        return { success: true, message: '该商品已支付' };
+    }
+    if (currentPaymentStatus === constants.PAYMENT_STATUS.CANCELLED) {
+        logger.warn(`[Payment] 拍品 ${auctionId} 已流拍`);
+        return { success: false, code: 'PAYMENT_TIMEOUT', message: '该商品已流拍，无法支付' };
+    }
+
+    clearPaymentTimer(auctionId);
+
+    await redisRepo.setPaymentStatus(auctionId, constants.PAYMENT_STATUS.PAID);
+    logger.info(`[Payment] Redis 中标记拍品 ${auctionId} 为已支付`);
+
+    const now = new Date();
+    try {
+        await mysqlRepo.updateOrderStatusByAuctionId(auctionId, constants.PAYMENT_STATUS.PAID, now);
+        logger.info(`[Payment] MySQL 中更新拍品 ${auctionId} 订单状态为已支付`);
+    } catch (error) {
+        logger.warn(`[Payment] MySQL 更新订单状态失败（不影响 WS 广播`, error.message);
+    }
+
+    eventBus.emit('auction_paid', {
+        auctionId,
+        roomId: auction.room_id,
+        winnerId: auction.highest_bidder_id,
+        price: auction.final_price || auction.current_price
+    });
+
+    logger.info(`[Payment] 支付成功，已广播 auction_paid 事件`);
+    return { success: true, message: '支付成功' };
+}
+
 module.exports = {
     initializeAuctionCache,
     warmUpActiveAuctionsCache,
@@ -740,5 +855,8 @@ module.exports = {
     cancelAuction,
     updateAuction,
     getBidHistory,
-    getLeaderboard
+    getLeaderboard,
+    payAuction,
+    startPaymentTimer,
+    clearPaymentTimer
 };

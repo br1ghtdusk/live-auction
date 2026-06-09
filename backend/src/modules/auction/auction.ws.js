@@ -1,5 +1,6 @@
 const eventBus = require('./event-bus.js');
 const logger = require('../../utils/logger.js');
+const wss = require('../../infrastructure/wss.js');
 
 let auctionService = null;
 
@@ -52,6 +53,30 @@ function init() {
 
     eventBus.on('ws:message', async ({ ws, roomId, data }) => {
         await handleMessage(ws, roomId, data);
+    });
+
+    eventBus.on('auction_paid', ({ auctionId, roomId, winnerId, price }) => {
+        logger.info(`[Auction WS] 广播 auction_paid 事件: room=${roomId}, winner=${winnerId}, price=${price}`);
+        wss.broadcast(roomId, {
+            type: 'AUCTION_PAID',
+            data: {
+                auctionId,
+                winnerId,
+                price
+            }
+        });
+    });
+
+    eventBus.on('auction_payment_timeout', ({ auctionId, roomId, winnerId, message }) => {
+        logger.info(`[Auction WS] 广播 auction_payment_timeout 事件: room=${roomId}`);
+        wss.broadcast(roomId, {
+            type: 'AUCTION_PAYMENT_TIMEOUT',
+            data: {
+                auctionId,
+                winnerId,
+                message
+            }
+        });
     });
 
     logger.info('[Auction WS] 拍卖消息处理器初始化完成');

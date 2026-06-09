@@ -310,6 +310,22 @@ async function updateById(id, fields) {
     return result;
 }
 
+async function updateOrderStatus(orderId, status, updatedAt) {
+    const [result] = await db.getPool().execute(
+        `UPDATE orders SET status = ?, updated_at = ? WHERE id = ?`,
+        [status, updatedAt, Number(orderId)]
+    );
+    return result.affectedRows;
+}
+
+async function updateOrderStatusByAuctionId(auctionId, status, updatedAt) {
+    const [result] = await db.getPool().execute(
+        `UPDATE orders SET status = ?, updated_at = ? WHERE auction_id = ?`,
+        [status, updatedAt, Number(auctionId)]
+    );
+    return result.affectedRows;
+}
+
 module.exports = {
     findById,
     create,
@@ -329,5 +345,7 @@ module.exports = {
     findBidHistoryByAuctionId,
     findLeaderboardByAuctionId,
     createOrder,
-    updateById
+    updateById,
+    updateOrderStatus,
+    updateOrderStatusByAuctionId
 };
