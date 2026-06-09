@@ -11,6 +11,7 @@ app.use(express.json());
 
 // 挂载垂直隔离的切片式 HTTP 接口集
 app.use('/api/admin/auctions', auctionRoutes);
+app.use('/api/auction', auctionRoutes);  // 用户端拍卖接口
 app.use('/api/merchant', orderRoutes);
 app.use('/api/rooms', roomRoutes);
 

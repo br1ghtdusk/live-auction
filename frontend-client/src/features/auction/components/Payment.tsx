@@ -67,9 +67,9 @@ const Payment = () => {
           ) : (
             <div className="payment-section observer">
               <span className="observer-hint">
-                {paymentStatus === 'paid' ? <><CheckCircle2 className="inline w-4 h-4 text-success mr-1" />该商品已完成支付</> :
+                {paymentStatus === 'paid' ? <><CheckCircle2 className="inline w-4 h-4 text-success mr-1" />商品已售出，下一件商品即将开始</> :
                   paymentStatus === 'timeout' ? <><AlertCircle className="inline w-4 h-4 text-red-400 mr-1" />该商品已流拍</> :
-                  <><CircleDollarSign className="inline w-4 h-4 text-yellow-400 mr-1" />等待获胜者完成支付...</>}
+                  <><CircleDollarSign className="inline w-4 h-4 text-yellow-400 mr-1" />感谢参与竞拍！...</>}
               </span>
             </div>
           )}

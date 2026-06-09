@@ -61,6 +61,7 @@ export interface ConsoleActions {
   loadLeaderboard: () => Promise<void>;
   setPaymentStatus: (status: PaymentStatus) => void;
   resetPaymentStatus: () => void;
+  resetAuctionData: () => void;
   payAuction: (auctionId: number, userId: number) => Promise<boolean>;
 }
 
@@ -122,10 +123,37 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
   // 支付状态
   const [paymentStatus, setPaymentStatusState] = useState(initialState.paymentStatus);
   const paymentStatusRef = useRef(initialState.paymentStatus);
+  const auctionIdRef = useRef<number | undefined>(undefined); // 用于跟踪 auctionId 变化
 
   useEffect(() => {
     paymentStatusRef.current = paymentStatus;
   }, [paymentStatus]);
+
+  // 🌟 核心逻辑：当 auctionId 变化时自动重置支付状态和出价记录
+  useEffect(() => {
+    const prevAuctionId = auctionIdRef.current;
+    const currentAuctionId = currentAuction?.id;
+    
+    if (prevAuctionId !== currentAuctionId) {
+      console.log('[Auction] auctionId 变化:', { prevAuctionId, currentAuctionId });
+      
+      // 如果之前有 auctionId（不是首次加载），清空出价数据
+      if (prevAuctionId !== undefined) {
+        setBidsList([]);
+        setLeaderboardList([]);
+        setBidderCount(0);
+      }
+      
+      // 如果当前有 auctionId，重置支付状态为 pending
+      if (currentAuctionId !== undefined) {
+        setPaymentStatusState('pending');
+        console.log('[Payment] 已重置支付状态为 pending');
+      }
+      
+      // 更新 auctionIdRef
+      auctionIdRef.current = currentAuctionId;
+    }
+  }, [currentAuction?.id]);
 
   // 更新展示模式和当前拍品
   const setRoomDisplay = useCallback((mode: RoomDisplayMode, auction: Auction | null) => {
@@ -190,6 +218,14 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
   const resetPaymentStatus = useCallback(() => {
     setPaymentStatusState('pending');
     console.log('[Payment] 已重置支付状态为 pending');
+  }, []);
+
+  // 清空出价记录和排行榜（用于新商品上架时）
+  const resetAuctionData = useCallback(() => {
+    setBidsList([]);
+    setLeaderboardList([]);
+    setBidderCount(0);
+    console.log('[Auction] 已清空出价记录和排行榜');
   }, []);
 
   const payAuction = useCallback(async (auctionId: number, userId: number): Promise<boolean> => {
@@ -324,13 +360,14 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
           case 'room_display': {
             const { mode, auction, bidderCount } = data.data;
             const cleanedAuction = auction ? sanitizeAuctionData(auction) : null;
+
+            // auctionId 变化检测已由 useEffect 处理，自动清空出价记录和重置支付状态
+
             setRoomDisplayMode(mode);
             setCurrentAuction(cleanedAuction);
             if (bidderCount !== undefined) setBidderCount(bidderCount);
             setLoading(false);
             lastSyncTimeRef.current = Date.now();
-
-            resetPaymentStatus();
 
             if (cleanedAuction) {
               loadAuctionData(cleanedAuction.id);
@@ -355,7 +392,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
             const amIWinningNow = priceData.highestBidderId === myUserId;
 
             if (wasIWinning && !amIWinningNow && myUserId !== 0) {
-              toast.error('您已被超越！赶快加价！', { 
+              toast.error('您已被超越！', { 
                 description: `当前最高价已更新至 ¥${(priceData.currentPrice / 100).toFixed(2)}`,
                 icon: <Flame className="w-5 h-5 text-orange-500 animate-pulse" />,
                 duration: 5000
@@ -425,11 +462,15 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
           case 'AUCTION_PAID': {
             console.log('[WS] 收到支付成功通知:', data.data);
             setPaymentStatusState('paid');
-            toast.success('支付成功！商品正在打包中', {
-              description: `成交价 ¥${(data.data.price / 100).toFixed(2)}`,
-              icon: <PartyPopper className="w-5 h-5 text-green-500" />,
-              duration: 5000,
-            });
+
+            // 只有获胜者才显示支付成功 Toast
+            if (myUserId === data.data.winnerId) {
+              toast.success('支付成功！商品正在打包中', {
+                description: `成交价 ¥${(data.data.price / 100).toFixed(2)}`,
+                icon: <PartyPopper className="w-5 h-5 text-green-500" />,
+                duration: 5000,
+              });
+            }
             break;
           }
 
@@ -548,13 +589,13 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
         const { mode, auction, bidderCount } = res.data;
         const cleanedAuction = auction ? sanitizeAuctionData(auction) : null;
 
+        // auctionId 变化检测已由 useEffect 处理，自动清空出价记录和重置支付状态
+
         setRoomDisplayMode(mode);
         setCurrentAuction(cleanedAuction);
         if (bidderCount !== undefined) setBidderCount(bidderCount);
         setLoading(false);
         lastSyncTimeRef.current = Date.now();
-
-        resetPaymentStatus();
 
         if (cleanedAuction) {
           loadAuctionData(cleanedAuction.id);
@@ -596,6 +637,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     loadLeaderboard,
     setPaymentStatus,
     resetPaymentStatus,
+    resetAuctionData,
     payAuction,
   };
 
