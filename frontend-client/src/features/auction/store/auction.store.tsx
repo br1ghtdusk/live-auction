@@ -1,5 +1,6 @@
 import { createContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
+import { Flame, AlertCircle, PartyPopper } from 'lucide-react';
 import type { Auction } from '../types/auction.types';
 import { auctionApi } from '../services/auction.api';
 import { sanitizeAuctionData } from '../utils/sanitizeAuction';
@@ -23,6 +24,8 @@ export interface LeaderboardItem {
   bidCount: number;      // 出价次数
 }
 
+export type PaymentStatus = 'pending' | 'paying' | 'paid' | 'timeout';
+
 export interface ConsoleState {
   roomDisplayMode: RoomDisplayMode;
   currentAuction: Auction | null;
@@ -38,6 +41,8 @@ export interface ConsoleState {
   showExtensionAlert: boolean;
   extensionSeconds: number;
   alertTrigger: number;  // 用于解决连续弹窗被吞的 Bug
+  // 支付状态
+  paymentStatus: PaymentStatus;
 }
 
 export interface ConsoleActions {
@@ -54,6 +59,9 @@ export interface ConsoleActions {
   resetStore: () => void;
   submitBid: (bidAmount: number) => void;
   loadLeaderboard: () => Promise<void>;
+  setPaymentStatus: (status: PaymentStatus) => void;
+  resetPaymentStatus: () => void;
+  payAuction: (auctionId: number, userId: number) => Promise<boolean>;
 }
 
 export type ConsoleStore = ConsoleState & ConsoleActions;
@@ -75,6 +83,8 @@ const initialState: ConsoleState = {
   showExtensionAlert: false,
   extensionSeconds: 0,
   alertTrigger: 0,
+  // 支付状态
+  paymentStatus: 'pending',
 };
 
 export const AuctionContext = createContext<ConsoleStore | null>(null);
@@ -109,6 +119,13 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
   const [showExtensionAlert, setShowExtensionAlert] = useState(initialState.showExtensionAlert);
   const [extensionSeconds, setExtensionSeconds] = useState(initialState.extensionSeconds);
   const [alertTrigger, setAlertTrigger] = useState(initialState.alertTrigger);
+  // 支付状态
+  const [paymentStatus, setPaymentStatusState] = useState(initialState.paymentStatus);
+  const paymentStatusRef = useRef(initialState.paymentStatus);
+
+  useEffect(() => {
+    paymentStatusRef.current = paymentStatus;
+  }, [paymentStatus]);
 
   // 更新展示模式和当前拍品
   const setRoomDisplay = useCallback((mode: RoomDisplayMode, auction: Auction | null) => {
@@ -150,6 +167,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     setShowExtensionAlert(initialState.showExtensionAlert);
     setExtensionSeconds(initialState.extensionSeconds);
     setAlertTrigger(initialState.alertTrigger);
+    setPaymentStatusState(initialState.paymentStatus);
   }, []);
 
   // 设置延时提醒
@@ -161,6 +179,50 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     if (show) {
       // 使用时间戳作为触发器，确保连续多次延时时组件能重新渲染
       setAlertTrigger(Date.now());
+    }
+  }, []);
+
+  // ============ 支付相关 Actions ============
+  const setPaymentStatus = useCallback((status: PaymentStatus) => {
+    setPaymentStatusState(status);
+  }, []);
+
+  const resetPaymentStatus = useCallback(() => {
+    setPaymentStatusState('pending');
+    console.log('[Payment] 已重置支付状态为 pending');
+  }, []);
+
+  const payAuction = useCallback(async (auctionId: number, userId: number): Promise<boolean> => {
+    if (paymentStatusRef.current === 'paying') {
+      console.warn('[Payment] 支付进行中，忽略重复请求');
+      return false;
+    }
+    if (paymentStatusRef.current === 'paid') {
+      toast.success('该商品已完成支付', {
+        icon: <PartyPopper className="w-5 h-5 text-green-500" />
+      });
+      return true;
+    }
+
+    setPaymentStatusState('paying');
+
+    try {
+      const result = await auctionApi.payAuction(auctionId, userId);
+
+      if (result.success) {
+        // 支付成功状态会由 WebSocket 推送更新
+        toast.success('正在确认支付...');
+        return true;
+      } else {
+        setPaymentStatusState('pending');
+        toast.error(result.message || '支付失败，请重试');
+        return false;
+      }
+    } catch (err: any) {
+      console.error('[Payment] 支付接口调用失败:', err);
+      setPaymentStatusState('pending');
+      toast.error('支付请求失败，请检查网络后重试');
+      return false;
     }
   }, []);
 
@@ -265,12 +327,13 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
             setRoomDisplayMode(mode);
             setCurrentAuction(cleanedAuction);
             if (bidderCount !== undefined) setBidderCount(bidderCount);
-            setLoading(false); // 数据加载完成
-            lastSyncTimeRef.current = Date.now(); // 更新同步时间
-            
+            setLoading(false);
+            lastSyncTimeRef.current = Date.now();
+
+            resetPaymentStatus();
+
             if (cleanedAuction) {
               loadAuctionData(cleanedAuction.id);
-              // 初始进入也拉取一次排行榜
               loadLeaderboard();
             }
             break;
@@ -294,7 +357,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
             if (wasIWinning && !amIWinningNow && myUserId !== 0) {
               toast.error('您已被超越！赶快加价！', { 
                 description: `当前最高价已更新至 ¥${(priceData.currentPrice / 100).toFixed(2)}`,
-                icon: '⚠️',
+                icon: <Flame className="w-5 h-5 text-orange-500 animate-pulse" />,
                 duration: 5000
               });
             } else if (amIWinningNow) {
@@ -346,10 +409,8 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
           case 'EXTENSION': {
             const extData = data.data;
             
-            // 1. 弹出延时提醒
             setExtensionAlert(true, extData.extendSeconds);
             
-            // 2. 核心业务：真正延长拍品的倒计时
             setCurrentAuction((prev) => {
               if (!prev) return null;
               return {
@@ -357,6 +418,28 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
                 scheduled_end_time: extData.newEndTime,
                 extend_count: prev.extend_count + 1,
               };
+            });
+            break;
+          }
+
+          case 'AUCTION_PAID': {
+            console.log('[WS] 收到支付成功通知:', data.data);
+            setPaymentStatusState('paid');
+            toast.success('支付成功！商品正在打包中', {
+              description: `成交价 ¥${(data.data.price / 100).toFixed(2)}`,
+              icon: <PartyPopper className="w-5 h-5 text-green-500" />,
+              duration: 5000,
+            });
+            break;
+          }
+
+          case 'AUCTION_PAYMENT_TIMEOUT': {
+            console.log('[WS] 收到支付超时通知:', data.data);
+            setPaymentStatusState('timeout');
+            toast.error('支付超时，商品已流拍', {
+              description: data.data.message || '请联系客服',
+              icon: <AlertCircle className="w-5 h-5 text-red-500" />,
+              duration: 5000,
             });
             break;
           }
@@ -464,13 +547,15 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
       if (res.code === 0 || res.code === 200) {
         const { mode, auction, bidderCount } = res.data;
         const cleanedAuction = auction ? sanitizeAuctionData(auction) : null;
-        
+
         setRoomDisplayMode(mode);
         setCurrentAuction(cleanedAuction);
         if (bidderCount !== undefined) setBidderCount(bidderCount);
         setLoading(false);
         lastSyncTimeRef.current = Date.now();
-        
+
+        resetPaymentStatus();
+
         if (cleanedAuction) {
           loadAuctionData(cleanedAuction.id);
           loadLeaderboard();
@@ -495,6 +580,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     showExtensionAlert,
     extensionSeconds,
     alertTrigger,
+    paymentStatus,
     setRoomDisplay,
     initBidsList,
     appendNewBid,
@@ -508,6 +594,9 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     resetStore,
     submitBid,
     loadLeaderboard,
+    setPaymentStatus,
+    resetPaymentStatus,
+    payAuction,
   };
 
   return (

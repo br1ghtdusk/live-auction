@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { cn } from '../../../shared/utils/cn';
 import { formatPrice } from '../../../shared/utils/formatPrice';
 import { BidConfirmModal } from './BidConfirmModal';
+import './BidPanel.css';
 
 interface BidPanelProps {
   /** 当前价格（分） */

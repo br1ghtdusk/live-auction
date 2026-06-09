@@ -1,6 +1,8 @@
 import React from 'react';
+import { Clock } from 'lucide-react';
 import { cn } from '../../../shared/utils/cn';
 import { useCountdown } from '../hooks/useCountdown';
+import './CountdownTimer.css';
 
 interface CountdownTimerProps {
   /** 倒计时截止目标时间戳（毫秒） */
@@ -21,7 +23,7 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = React.memo(({
   return (
     <div className={cn('countdown-badge', isUrgent && 'countdown-urgent')}>
       <span className="time-display">
-        <span className="icon">⏱️</span>
+        <Clock className="w-4 h-4 text-primary" />
         <span className="time-numbers">
           {hours}:{minutes}:{seconds}
         </span>

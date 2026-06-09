@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Image, PartyPopper, XCircle, Frown } from 'lucide-react';
 import { useAuctionStatus } from '../hooks/useAuctionStatus';
 import { CountdownTimer } from './CountdownTimer';
 import { PricePanel } from './PricePanel';
 import { BidPanel } from './BidPanel';
+import Payment from './Payment';
 import { formatPrice } from '../../../shared/utils/formatPrice';
 import { useAuctionStore } from '../hooks/useAuctionstore';
 import './AuctionCard.css';
@@ -135,7 +137,7 @@ const AuctionCard = () => {
                 />
               ) : (
                 <div className="image-placeholder">
-                  <span className="placeholder-icon">🖼️</span>
+                  <Image className="w-12 h-12 text-muted opacity-30" />
                   <span className="placeholder-text">暂无拍品图片</span>
                 </div>
               )}
@@ -242,17 +244,17 @@ const AuctionCard = () => {
               <div className="result-content">
                 {auction?.status === 'SOLD' ? (
                   <>
-                    <span className="result-emoji">🎉</span>
+                    <PartyPopper className="w-12 h-12 text-success animate-bounce" />
                     <span className="result-title">成交</span>
                   </>
                 ) : auction?.status === 'CANCELLED' ? (
                   <>
-                    <span className="result-emoji">🚫</span>
+                    <XCircle className="w-12 h-12 text-muted" />
                     <span className="result-title">已取消</span>
                   </>
                 ) : (
                   <>
-                    <span className="result-emoji">😢</span>
+                    <Frown className="w-12 h-12 text-muted" />
                     <span className="result-title">流拍</span>
                   </>
                 )}
@@ -281,6 +283,9 @@ const AuctionCard = () => {
                   <span className="winner-id">用户 {auction.highest_bidder_id}</span>
                 </div>
               )}
+
+              {/* 支付组件 */}
+              <Payment />
             </div>
           </motion.div>
         )}

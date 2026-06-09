@@ -57,6 +57,12 @@ export interface RoomDisplayStateResponse {
   };
 }
 
+export interface PayAuctionResponse {
+  success: boolean;
+  code?: number;
+  message?: string;
+}
+
 export const auctionApi = {
   getRoomState: async (roomId: number): Promise<RoomStateResponse> => {
     const response = await api.get(`/api/rooms/${roomId}`);
@@ -90,5 +96,26 @@ export const auctionApi = {
   getRoomDisplayState: async (roomId: number): Promise<RoomDisplayStateResponse> => {
     const response = await api.get(`/api/rooms/${roomId}/display-state`);
     return response.data;
+  },
+
+  // 支付拍品
+  payAuction: async (auctionId: number, userId: number): Promise<PayAuctionResponse> => {
+    try {
+      const response = await api.post(`/api/auction/pay`, {
+        auctionId,
+        userId,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('[Payment API] 支付请求失败:', error);
+      if (error.response?.data) {
+        return error.response.data;
+      }
+      return {
+        success: false,
+        code: 500,
+        message: '支付请求失败，请检查网络连接',
+      };
+    }
   },
 };

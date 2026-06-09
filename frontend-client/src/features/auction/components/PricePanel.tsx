@@ -1,6 +1,8 @@
 import React from 'react';
+import { Frown } from 'lucide-react';
 import { formatPrice } from '../../../shared/utils/formatPrice';
 import type { AuctionStatus } from '../constants/auctionStatus';
+import './PricePanel.css';
 
 interface PricePanelProps {
   startPrice: number;
@@ -18,7 +20,8 @@ export const PricePanel: React.FC<PricePanelProps> = React.memo(({
   if (status === 'FAILED') {
     return (
       <div className="price-section-failed">
-        <span className="failed-text">😢 无人出价，已流拍</span>
+        <Frown className="w-5 h-5 text-red-400 inline mr-2" />
+        <span className="failed-text">无人出价，已流拍</span>
       </div>
     );
   }

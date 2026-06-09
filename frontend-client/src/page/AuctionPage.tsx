@@ -59,7 +59,7 @@ function AuctionPageBody() {
     <div ref={containerRef} className="auction-page-container noise-overlay">
       <VideoBackground />
       <ExtensionAlert />
-      <HeartEffect containerRef={containerRef} />
+      <HeartEffect containerRef={containerRef as unknown as React.RefObject<HTMLElement>} />
       <BidBarrageContainer />
       <div className="auction-card-wrapper">
         <AuctionCard />
