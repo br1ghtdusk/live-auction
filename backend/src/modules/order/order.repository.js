@@ -24,10 +24,18 @@ async function getById(orderId) {
     return rows.length > 0 ? rows[0] : null;
 }
 
-async function updateStatus(orderId, status) {
+async function updateOrderStatus(orderId, status) {
     const [result] = await db.getPool().execute(
         'UPDATE orders SET status = ?, updated_at = NOW() WHERE id = ?',
         [status, orderId]
+    );
+    return result.affectedRows;
+}
+
+async function updateOrderStatusByAuctionId(auctionId, status) {
+    const [result] = await db.getPool().execute(
+        'UPDATE orders SET status = ?, updated_at = NOW() WHERE auction_id = ?',
+        [status, auctionId]
     );
     return result.affectedRows;
 }
@@ -91,7 +99,8 @@ module.exports = {
     create,
     getByAuctionId,
     getById,
-    updateStatus,
+    updateOrderStatus,
+    updateOrderStatusByAuctionId,
     pay,
     cancel,
     refund,

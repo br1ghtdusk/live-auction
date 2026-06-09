@@ -1,18 +1,14 @@
 const eventBus = require('./event-bus.js');
 const constants = require('./auction.constants.js');
 const logger = require('../../utils/logger.js');
+const roomService = require('../room/room.service.js');
 
 const WS_EVENTS = constants.WS_EVENTS.SERVER_BROADCAST;
 
 let wss = null;
-let auctionService = null;
 
 function setWss(wsModule) {
     wss = wsModule;
-}
-
-function setAuctionService(service) {
-    auctionService = service;
 }
 
 function handlePriceUpdate(data) {
@@ -45,16 +41,14 @@ async function handleAuctionEnded(data) {
     });
     
     // 广播最新的 room_display 状态
-    if (auctionService) {
-        try {
-            const displayState = await auctionService.getRoomDisplayState(data.roomId);
-            wss.broadcast(data.roomId, {
-                type: 'room_display',
-                data: displayState
-            });
-        } catch (error) {
-            logger.error('[EventHandler] 获取房间显示状态失败:', error);
-        }
+    try {
+        const displayState = await roomService.getRoomDisplayState(data.roomId);
+        wss.broadcast(data.roomId, {
+            type: 'room_display',
+            data: displayState
+        });
+    } catch (error) {
+        logger.error('[EventHandler] 获取房间显示状态失败:', error);
     }
 }
 
@@ -82,11 +76,11 @@ async function handleRoomDisplay(data) {
 
 // 处理房间状态更新广播（用于自动激活拍品后通知所有客户端）
 async function handleRoomDisplayUpdate(data) {
-    if (!wss || !auctionService) return;
+    if (!wss) return;
     
     const { roomId } = data;
     try {
-        const displayState = await auctionService.getRoomDisplayState(roomId);
+        const displayState = await roomService.getRoomDisplayState(roomId);
         wss.broadcast(roomId, {
             type: 'room_display',
             data: displayState
@@ -109,7 +103,6 @@ function init() {
 module.exports = {
     init,
     setWss,
-    setAuctionService,
     handlePriceUpdate,
     handleAuctionEnded,
     handleBidRejected

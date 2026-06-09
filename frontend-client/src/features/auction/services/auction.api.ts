@@ -39,7 +39,6 @@ export interface LeaderboardResponse {
     list: Array<{
       userId: number;
       username: string;
-      avatar: string;
       maxBidAmount: number;  // 最高出价（分）
       bidCount: number;      // 出价次数
     }>;
@@ -98,10 +97,10 @@ export const auctionApi = {
     return response.data;
   },
 
-  // 支付拍品
-  payAuction: async (auctionId: number, userId: number): Promise<PayAuctionResponse> => {
+  // 支付订单
+  payOrder: async (auctionId: number, userId: number): Promise<PayAuctionResponse> => {
     try {
-      const response = await api.post(`/api/auction/pay`, {
+      const response = await api.post(`/api/pay`, {
         auctionId,
         userId,
       });
@@ -113,8 +112,8 @@ export const auctionApi = {
       }
       return {
         success: false,
-        code: 500,
-        message: '支付请求失败，请检查网络连接',
+        code: 'ERROR',
+        message: '支付失败',
       };
     }
   },

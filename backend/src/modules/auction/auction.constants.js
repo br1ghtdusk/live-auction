@@ -22,7 +22,8 @@ const REDIS_KEYS = {
     getRoomOnlineKey: (roomId) => `room:${roomId}:online`,
     getHighestBidKey: (id) => `auction:${id}:highest_bid`,
     getPaymentStatusKey: (id) => `auction:${id}:payment_status`,
-    getPaymentTimeoutKey: (id) => `auction:${id}:payment_timeout`
+    getPaymentTimeoutKey: (id) => `auction:${id}:payment_timeout`,
+    getLeaderboardZSetKey: (id) => `auction:${id}:leaderboard`  // 新增：排行榜 ZSET
 };
 
 const WS_EVENTS = {

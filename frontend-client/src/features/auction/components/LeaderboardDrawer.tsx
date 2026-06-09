@@ -74,7 +74,6 @@ export const LeaderboardDrawer: React.FC<LeaderboardDrawerProps> = React.memo(({
                 // 安全获取用户信息
                 const userId = item?.userId ?? 0;
                 const username = item?.username ?? `用户${userId}`;
-                const avatar = item?.avatar ?? `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`;
                 const bidCount = item?.bidCount ?? 0;
                 const maxBidAmount = item?.maxBidAmount ?? 0;
 
@@ -84,16 +83,6 @@ export const LeaderboardDrawer: React.FC<LeaderboardDrawerProps> = React.memo(({
                     <span className={`rank-badge ${getRankStyle(index)}`}>
                       {getRankBadge(index)}
                     </span>
-
-                    {/* 头像 */}
-                    <img
-                      src={avatar}
-                      alt={username}
-                      className="user-avatar"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`;
-                      }}
-                    />
 
                     {/* 昵称 */}
                     <span className="user-name">{username}</span>

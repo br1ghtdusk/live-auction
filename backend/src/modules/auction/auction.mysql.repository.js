@@ -266,24 +266,6 @@ async function findLeaderboardByAuctionId(auctionId) {
     return rows;
 }
 
-async function createOrder(data) {
-    const {
-        auction_id,
-        merchant_id,
-        winner_id,
-        final_price,
-        status = 'PENDING',
-        created_at
-    } = data;
-
-    const [result] = await db.getPool().execute(
-        `INSERT INTO orders (auction_id, merchant_id, winner_id, final_price, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [auction_id, merchant_id, winner_id, final_price, status, created_at, created_at]
-    );
-    return result.insertId;
-}
-
 async function findActiveAuctions() {
     const [rows] = await db.getPool().query(
         `SELECT id, room_id, merchant_id, status, scheduled_end_time
@@ -310,22 +292,6 @@ async function updateById(id, fields) {
     return result;
 }
 
-async function updateOrderStatus(orderId, status, updatedAt) {
-    const [result] = await db.getPool().execute(
-        `UPDATE orders SET status = ?, updated_at = ? WHERE id = ?`,
-        [status, updatedAt, Number(orderId)]
-    );
-    return result.affectedRows;
-}
-
-async function updateOrderStatusByAuctionId(auctionId, status, updatedAt) {
-    const [result] = await db.getPool().execute(
-        `UPDATE orders SET status = ?, updated_at = ? WHERE auction_id = ?`,
-        [status, updatedAt, Number(auctionId)]
-    );
-    return result.affectedRows;
-}
-
 module.exports = {
     findById,
     create,
@@ -344,8 +310,5 @@ module.exports = {
     insertBidRecord,
     findBidHistoryByAuctionId,
     findLeaderboardByAuctionId,
-    createOrder,
-    updateById,
-    updateOrderStatus,
-    updateOrderStatusByAuctionId
+    updateById
 };

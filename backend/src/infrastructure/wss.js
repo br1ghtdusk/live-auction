@@ -48,13 +48,23 @@ function handleConnection(ws, req) {
     eventBus.emit('ws:connection', { ws, roomId });
 
     ws.on('message', (message) => {
-        try {
-            const data = JSON.parse(message.toString());
-            eventBus.emit('ws:message', { ws, roomId, data });
-        } catch (error) {
-            logger.error('[WS] 数据报解析异常:', error);
-        }
-    });
+
+    console.log("收到消息：", message.toString());
+
+    try {
+
+        const data = JSON.parse(message.toString());
+
+        eventBus.emit('ws:message', { ws, roomId, data });
+
+    } catch (error) {
+
+        console.log("原始message=", JSON.stringify(message.toString()));
+
+        logger.error('[WS] 数据报解析异常:', error);
+    }
+
+});
 
     ws.on('close', () => {
         logger.info('[WS] 客户端物理断开');

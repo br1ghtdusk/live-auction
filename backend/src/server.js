@@ -74,7 +74,7 @@ function setupGracefulShutdown(server) {
             });
 
             logger.info('[Server Master] 步骤5: 断开 Redis 连接...');
-            await redis.disconnect().catch((err) => {
+            await redis.quit().catch((err) => {
                 logger.warn('[Server Master] 断开 Redis 连接时发生错误:', err);
             });
 
@@ -136,11 +136,9 @@ async function start() {
         websocketConfig.initWebSocket(server);
 
         logger.info('[Server Master] 步骤2: 绑定业务处理器...');
-        auctionWsHandler.setAuctionService(auctionService);
         auctionWsHandler.init();
 
         auctionEventHandler.setWss(wss);
-        auctionEventHandler.setAuctionService(auctionService);
         auctionEventHandler.init();
 
         logger.info('[Server Master] 步骤3: 动态预热活跃拍品缓存...');

@@ -10,7 +10,7 @@ const Payment = () => {
     currentAuction: auction,
     myUserId,
     paymentStatus,
-    payAuction,
+    payOrder,
   } = useAuctionStore();
 
   const [showPayModal, setShowPayModal] = useState(false);
@@ -21,7 +21,7 @@ const Payment = () => {
 
   const handlePay = async () => {
     if (auction?.id && myUserId) {
-      const success = await payAuction(auction.id, myUserId);
+      const success = await payOrder(auction.id, myUserId);
       if (success) {
         setTimeout(() => setShowPayModal(false), 1500);
       }
@@ -67,9 +67,9 @@ const Payment = () => {
           ) : (
             <div className="payment-section observer">
               <span className="observer-hint">
-                {paymentStatus === 'paid' ? <><CheckCircle2 className="inline w-4 h-4 text-success mr-1" />商品已售出，下一件商品即将开始</> :
-                  paymentStatus === 'timeout' ? <><AlertCircle className="inline w-4 h-4 text-red-400 mr-1" />该商品已流拍</> :
-                  <><CircleDollarSign className="inline w-4 h-4 text-yellow-400 mr-1" />感谢参与竞拍！...</>}
+                {paymentStatus === 'paid' ? <><CheckCircle2 className="inline w-4 h-4 text-success mr-1" />商品已售出，下一件商品即将开始...</> :
+                  paymentStatus === 'timeout' ? <><AlertCircle className="inline w-4 h-4 text-red-400 mr-1" />商品流拍,等待重新上架...</> :
+                  <><CircleDollarSign className="inline w-4 h-4 text-yellow-400 mr-1" />本轮竞拍结束,等待下一件商品...</>}
               </span>
             </div>
           )}

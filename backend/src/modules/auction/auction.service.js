@@ -1,6 +1,8 @@
 const eventBus = require('./event-bus.js');
 const mysqlRepo = require('./auction.mysql.repository.js');
 const redisRepo = require('./auction.redis.repository.js');
+const redis = require('../../infrastructure/redis.js');
+const orderService = require('../order/order.service.js');
 const mapper = require('./auction.mapper.js');
 const constants = require('./auction.constants.js');
 const auctionEngine = require('../../engines/auction-engine.js');
@@ -184,7 +186,7 @@ async function placeBid(roomId, auctionId, data) {
                         updatedAt
                     );
 
-                    await createOrderForAuction(auctionId, mysqlAuction.merchant_id, highestBidderId, currentPrice, updatedAt);
+                    await orderService.createOrderForAuction(auctionId, mysqlAuction.merchant_id, highestBidderId, currentPrice);
                 } else if (is_first_activation) {
                     const actualStartTime = time.formatTimeForMySQL(now);
                     const formattedScheduledEndTime = time.formatTimeForMySQL(scheduledEndTime);
@@ -221,8 +223,16 @@ async function placeBid(roomId, auctionId, data) {
             }
         }
 
-        // 等待同步完成后再获取排行榜，确保数据实时性
+        // 等待同步完成
         await syncToMySQL();
+        
+        // 同步更新 Redis ZSET 排行榜（写入 MySQL 后立即更新）
+        try {
+            await redisRepo.updateLeaderboard(auctionId, userId, currentPrice);
+            logger.info(`[Service] Redis ZSET 排行榜更新完成: auctionId=${auctionId}, userId=${userId}, bidAmount=${currentPrice}`);
+        } catch (redisError) {
+            logger.error(`[Service] Redis ZSET 更新异常: auctionId=${auctionId}`, redisError);
+        }
 
         if (is_sold) {
             const TTL_SECONDS = 86400;
@@ -230,7 +240,7 @@ async function placeBid(roomId, auctionId, data) {
             logger.info(`[Service] 已为一口价成交商品 ${auctionId} 设置 TTL 过期时间: ${TTL_SECONDS} 秒 (24小时)`);
 
             logger.info(`[Service] 启动支付超时定时器: auctionId=${auctionId}`);
-            startPaymentTimer(
+            orderService.startPaymentTimer(
                 auctionId,
                 roomId,
                 updatedAuction.highest_bidder_id,
@@ -268,23 +278,6 @@ async function placeBid(roomId, auctionId, data) {
         return { success: true, type: 'price_update' };
     } finally {
         await redisRepo.releaseLock(`${lockKey}:${userId}`, requestId);
-    }
-}
-
-async function createOrderForAuction(auctionId, merchantId, winnerId, finalPrice, createdAt) {
-    try {
-        await mysqlRepo.createOrder({
-            auction_id: auctionId,
-            merchant_id: merchantId,
-            winner_id: winnerId,
-            final_price: finalPrice,
-            status: 'PENDING',
-            created_at: createdAt
-        });
-        logger.info(`[Service] 订单已创建: auctionId=${auctionId}, winnerId=${winnerId}, price=${finalPrice}`);
-    } catch (error) {
-        logger.error('[Service] 创建订单失败:', error);
-        throw error;
     }
 }
 
@@ -340,7 +333,10 @@ async function checkAndSettleAuctions() {
                     if (mysqlAuction) {
                         const actualStartTime = time.formatTimeForMySQL(now);
                         const updatedAt = actualStartTime;
-                        await mysqlRepo.updateStatus(auctionId, constants.AUCTION_STATUS.BIDDING, updatedAt);
+                        await mysqlRepo.updateById(auctionId, { 
+                            status: constants.AUCTION_STATUS.BIDDING, 
+                            updated_at: updatedAt 
+                        });
                     }
                     
                     logger.info(`[Heartbeat] 拍品 ${auctionId} 已自动激活为 BIDDING 状态`);
@@ -380,7 +376,7 @@ async function checkAndSettleAuctions() {
                     );
 
                     if (newState.status === 'SOLD' && newState.highest_bidder_id) {
-                        await createOrderForAuction(
+                        await orderService.createOrderForAuction(
                             auctionId,
                             mysqlAuction.merchant_id,
                             newState.highest_bidder_id,
@@ -389,7 +385,7 @@ async function checkAndSettleAuctions() {
                         );
 
                         logger.info(`[Heartbeat] 启动支付超时定时器: auctionId=${auctionId}`);
-                        startPaymentTimer(
+                        orderService.startPaymentTimer(
                             auctionId,
                             roomId,
                             newState.highest_bidder_id,
@@ -463,98 +459,7 @@ async function createAuction(payload) {
     return { id: auctionId };
 }
 
-async function getRoomDisplayState(roomId) {
-    const FIVE_MINUTES_MS = 5 * 60 * 1000;
-    const now = Date.now();
-    
-    // 获取最近10条数据（放大限制防止预售商品过多导致当前商品被挤出）
-    const auctions = await mysqlRepo.findByRoomId(roomId, 10, 0);
-    
-    if (auctions.length === 0) {
-        logger.info(`[Service] 房间 ${roomId} 没有任何拍品记录`);
-        return { mode: 'IDLE', auction: null, bidderCount: 0 };
-    }
-    
-    // 获取当前参拍人数
-    const targetAuction = auctions.find(a => a.status === 'BIDDING') || auctions[0];
-    const leaderboardData = await getLeaderboard(targetAuction.id);
-    const bidderCount = leaderboardData.bidderCount;
 
-    // 第一步：查找是否存在状态为 'BIDDING' 的拍品
-    const biddingAuction = auctions.find(a => a.status === 'BIDDING');
-    if (biddingAuction) {
-        let detail = await mysqlRepo.findById(biddingAuction.id);
-        
-        // 🌟 关键修复：从 Redis 获取实时价格，确保与当前出价一致
-        try {
-            const redisAuction = await redisRepo.findById(biddingAuction.id);
-            if (redisAuction && redisAuction.current_price !== undefined) {
-                detail = {
-                    ...detail,
-                    current_price: Number(redisAuction.current_price),
-                    highest_bidder_id: redisAuction.highest_bidder_id ? Number(redisAuction.highest_bidder_id) : detail.highest_bidder_id,
-                    scheduled_end_time: redisAuction.scheduled_end_time || detail.scheduled_end_time,
-                    extend_count: redisAuction.extend_count ? Number(redisAuction.extend_count) : detail.extend_count,
-                    status: redisAuction.status || detail.status,
-                };
-            }
-        } catch (e) {
-            logger.warn(`[Service] Redis读取失败，使用MySQL数据: ${e.message}`);
-        }
-        
-        logger.info(`[Service] 房间 ${roomId} 找到进行中的拍品 ID: ${biddingAuction.id}`);
-        return { mode: 'ACTIVE', auction: detail, bidderCount };
-    }
-    
-    // 第二步：查找所有状态为 'WAITING' 的拍品，取最临近开始的那一件
-    const waitingAuctions = auctions.filter(a => a.status === 'WAITING');
-    if (waitingAuctions.length > 0) {
-        // 按 scheduled_start_time 升序排序，取最临近开始的
-        waitingAuctions.sort((a, b) => 
-            new Date(a.scheduled_start_time).getTime() - new Date(b.scheduled_start_time).getTime()
-        );
-        const nearestWaiting = waitingAuctions[0];
-        const detail = await mysqlRepo.findById(nearestWaiting.id);
-        logger.info(`[Service] 房间 ${roomId} 找到即将开始的拍品 ID: ${nearestWaiting.id}`);
-        return { mode: 'ACTIVE', auction: detail, bidderCount };
-    }
-    
-    // 第三步：查找历史结束的拍品，执行 5 分钟缓冲期判定
-    const endedAuctions = auctions.filter(a => 
-        ['SOLD', 'FAILED', 'CANCELLED'].includes(a.status)
-    );
-    
-    if (endedAuctions.length > 0) {
-        // 按 ID 降序排序，取最新结束的
-        endedAuctions.sort((a, b) => b.id - a.id);
-        const latestEnded = endedAuctions[0];
-        
-        // 计算拍品结束时间：优先使用 actual_end_time，否则使用 scheduled_end_time
-        const auctionEndTime = latestEnded.actual_end_time 
-            ? new Date(latestEnded.actual_end_time).getTime()
-            : new Date(latestEnded.scheduled_end_time).getTime();
-        
-        // 检查结束时间是否在5分钟内
-        const timeSinceEnd = now - auctionEndTime;
-        
-        if (timeSinceEnd <= FIVE_MINUTES_MS) {
-            const detail = await mysqlRepo.findById(latestEnded.id);
-            logger.info(`[Service] 房间 ${roomId} 找到刚结束的拍品 ID: ${latestEnded.id}，结束于 ${Math.floor(timeSinceEnd / 1000)} 秒前`);
-            return { mode: 'RESULT', auction: detail, bidderCount };
-        }
-        
-        logger.info(`[Service] 房间 ${roomId} 最新拍品已结束超过 5 分钟`);
-    }
-    
-    // 第四步：以上皆无，返回 IDLE
-    logger.info(`[Service] 房间 ${roomId} 处于 IDLE 状态`);
-    return { mode: 'IDLE', auction: null, bidderCount: 0 };
-}
-
-async function getActiveAuctionByRoomId(roomId) {
-    const displayState = await getRoomDisplayState(roomId);
-    return displayState.mode !== 'IDLE' ? displayState.auction : null;
-}
 
 async function getAuctionsByMerchantId(merchantId) {
     // 查询指定商家的所有拍品
@@ -717,129 +622,57 @@ async function getBidHistory(auctionId) {
 }
 
 /**
- * 获取拍品的出价排行榜（前5名）
+ * 从 MySQL 预热排行榜到 Redis
+ * @param {number} auctionId - 拍品ID
+ */
+async function warmupLeaderboardFromMySQL(auctionId) {
+    logger.info(`[Leaderboard] Redis 中不存在排行榜数据，从 MySQL 预热: auctionId=${auctionId}`);
+    
+    // 从 MySQL 获取所有出价记录
+    const records = await mysqlRepo.findLeaderboardByAuctionId(auctionId);
+    
+    // 批量写入 Redis ZSET
+    const client = redis.getClient();
+    const key = constants.REDIS_KEYS.getLeaderboardZSetKey(auctionId);
+    
+    for (const record of records) {
+        await client.zAdd(key, {
+            score: record.maxBidAmount,
+            value: String(record.userId)
+        });
+    }
+    
+    logger.info(`[Leaderboard] 预热完成: auctionId=${auctionId}, count=${records.length}`);
+}
+
+/**
+ * 获取拍品的出价排行榜（前10名）- 优先从 Redis ZSET 获取
  * @param {number} auctionId - 拍品ID
  * @returns {Array} - 排行榜数据
  */
 async function getLeaderboard(auctionId) {
-    const records = await mysqlRepo.findLeaderboardByAuctionId(auctionId);
+    // 1. 检查 Redis 中是否存在排行榜数据
+    const exists = await redisRepo.leaderboardExists(auctionId);
     
-    // 获取唯一参与人数
-    const [rows] = await db.getPool().query(
-        `SELECT COUNT(DISTINCT user_id) AS bidderCount FROM bid_records WHERE auction_id = ?`,
-        [auctionId]
-    );
-    const bidderCount = rows[0]?.bidderCount || 0;
-
+    if (!exists) {
+        // 兜底机制：从 MySQL 预热到 Redis
+        await warmupLeaderboardFromMySQL(auctionId);
+    }
+    
+    // 2. 从 Redis ZSET 获取前10名
+    const leaderboardData = await redisRepo.getLeaderboardFromRedis(auctionId, 10);
+    const bidderCount = await redisRepo.getLeaderboardCount(auctionId);
+    
+    // 3. 构建返回数据（用户信息可以后续从缓存或 MySQL 批量获取）
     return {
-        list: records.map(record => ({
-            userId: record.userId,
-            username: `用户${record.userId}`,
-            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${record.userId}`,
-            maxBidAmount: record.maxBidAmount,
-            bidCount: record.bidCount
+        list: leaderboardData.map(item => ({
+            userId: item.userId,
+            username: `用户${item.userId}`,
+            maxBidAmount: item.bidAmount,
+            bidCount: 1  // Redis ZSET 只存储最高出价，bidCount 需要从 MySQL 查询
         })),
         bidderCount
     };
-}
-
-const paymentTimers = new Map();
-
-function startPaymentTimer(auctionId, roomId, winnerId, finalPrice) {
-    if (paymentTimers.has(auctionId)) {
-        clearTimeout(paymentTimers.get(auctionId));
-        logger.info(`[Payment] 拍品 ${auctionId} 已存在支付定时器，已清除并重新启动`);
-    }
-
-    const timer = setTimeout(async () => {
-        logger.info(`[Payment] 拍品 ${auctionId} 支付超时（${constants.PAYMENT_TIMEOUT_MS}ms），触发流拍`);
-        paymentTimers.delete(auctionId);
-
-        await redisRepo.setPaymentStatus(auctionId, constants.PAYMENT_STATUS.CANCELLED);
-        logger.info(`[Payment] Redis 中标记拍品 ${auctionId} 为流拍`);
-
-        const now = new Date();
-        try {
-            await mysqlRepo.updateOrderStatusByAuctionId(auctionId, constants.PAYMENT_STATUS.CANCELLED, now);
-            logger.info(`[Payment] MySQL 中更新拍品 ${auctionId} 订单状态为 CANCELLED`);
-        } catch (error) {
-            logger.error(`[Payment] MySQL 更新订单状态失败：${error.message}`);
-        }
-
-        eventBus.emit('auction_payment_timeout', {
-            auctionId,
-            roomId,
-            winnerId,
-            message: '支付超时，商品流拍'
-        });
-    }, constants.PAYMENT_TIMEOUT_MS);
-
-    paymentTimers.set(auctionId, timer);
-    logger.info(`[Payment] 拍品 ${auctionId} 已启动支付定时器，${constants.PAYMENT_TIMEOUT_MS}ms 后超时`);
-}
-
-function clearPaymentTimer(auctionId) {
-    const timer = paymentTimers.get(auctionId);
-    if (timer) {
-        clearTimeout(timer);
-        paymentTimers.delete(auctionId);
-        logger.info(`[Payment] 拍品 ${auctionId} 已清除支付定时器`);
-        return true;
-    }
-    return false;
-}
-
-async function payAuction(auctionId, userId) {
-    logger.info(`[Payment] 收到支付请求：auctionId=${auctionId}, userId=${userId}`);
-
-    const auction = await redisRepo.findById(auctionId);
-    if (!auction) {
-        logger.warn(`[Payment] 拍品 ${auctionId} 不存在`);
-        return { success: false, code: 'AUCTION_NOT_FOUND', message: '拍品不存在' };
-    }
-
-    if (auction.status !== constants.AUCTION_STATUS.SOLD) {
-        logger.warn(`[Payment] 拍品 ${auctionId} 状态为 ${auction.status}，不可支付`);
-        return { success: false, code: 'AUCTION_NOT_SOLD', message: '该拍品当前状态不可支付' };
-    }
-
-    if (auction.highest_bidder_id !== Number(userId)) {
-        logger.warn(`[Payment] 用户 ${userId} 不是获胜者，真实获胜者=${auction.highest_bidder_id}`);
-        return { success: false, code: 'NOT_WINNER', message: '您不是该拍品的获胜者，无权支付' };
-    }
-
-    const currentPaymentStatus = await redisRepo.getPaymentStatus(auctionId);
-    if (currentPaymentStatus === constants.PAYMENT_STATUS.PAID) {
-        logger.info(`[Payment] 拍品 ${auctionId} 已支付`);
-        return { success: true, message: '该商品已支付' };
-    }
-    if (currentPaymentStatus === constants.PAYMENT_STATUS.CANCELLED) {
-        logger.warn(`[Payment] 拍品 ${auctionId} 已流拍`);
-        return { success: false, code: 'PAYMENT_TIMEOUT', message: '该商品已流拍，无法支付' };
-    }
-
-    clearPaymentTimer(auctionId);
-
-    await redisRepo.setPaymentStatus(auctionId, constants.PAYMENT_STATUS.PAID);
-    logger.info(`[Payment] Redis 中标记拍品 ${auctionId} 为已支付`);
-
-    const now = new Date();
-    try {
-        await mysqlRepo.updateOrderStatusByAuctionId(auctionId, constants.PAYMENT_STATUS.PAID, now);
-        logger.info(`[Payment] MySQL 中更新拍品 ${auctionId} 订单状态为已支付`);
-    } catch (error) {
-        logger.warn(`[Payment] MySQL 更新订单状态失败（不影响 WS 广播`, error.message);
-    }
-
-    eventBus.emit('auction_paid', {
-        auctionId,
-        roomId: auction.room_id,
-        winnerId: auction.highest_bidder_id,
-        price: auction.final_price || auction.current_price
-    });
-
-    logger.info(`[Payment] 支付成功，已广播 auction_paid 事件`);
-    return { success: true, message: '支付成功' };
 }
 
 module.exports = {
@@ -849,14 +682,9 @@ module.exports = {
     placeBid,
     checkAndSettleAuctions,
     createAuction,
-    getActiveAuctionByRoomId,
-    getRoomDisplayState,
     getAuctionsByMerchantId,
     cancelAuction,
     updateAuction,
     getBidHistory,
-    getLeaderboard,
-    payAuction,
-    startPaymentTimer,
-    clearPaymentTimer
+    getLeaderboard
 };

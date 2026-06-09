@@ -159,16 +159,6 @@
   color: var(--color-muted);
 }
 
-/* 用户头像 */
-.user-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-}
-
 /* 用户昵称 */
 .user-name {
   flex: 1;

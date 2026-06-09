@@ -19,7 +19,6 @@ export interface BidRecord {
 export interface LeaderboardItem {
   userId: number;
   username: string;
-  avatar: string;
   maxBidAmount: number;  // 最高出价（分）
   bidCount: number;      // 出价次数
 }
@@ -62,7 +61,7 @@ export interface ConsoleActions {
   setPaymentStatus: (status: PaymentStatus) => void;
   resetPaymentStatus: () => void;
   resetAuctionData: () => void;
-  payAuction: (auctionId: number, userId: number) => Promise<boolean>;
+  payOrder: (auctionId: number, userId: number) => Promise<boolean>;
 }
 
 export type ConsoleStore = ConsoleState & ConsoleActions;
@@ -228,7 +227,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     console.log('[Auction] 已清空出价记录和排行榜');
   }, []);
 
-  const payAuction = useCallback(async (auctionId: number, userId: number): Promise<boolean> => {
+  const payOrder = useCallback(async (auctionId: number, userId: number): Promise<boolean> => {
     if (paymentStatusRef.current === 'paying') {
       console.warn('[Payment] 支付进行中，忽略重复请求');
       return false;
@@ -243,7 +242,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     setPaymentStatusState('paying');
 
     try {
-      const result = await auctionApi.payAuction(auctionId, userId);
+      const result = await auctionApi.payOrder(auctionId, userId);
 
       if (result.success) {
         // 支付成功状态会由 WebSocket 推送更新
@@ -638,7 +637,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
     setPaymentStatus,
     resetPaymentStatus,
     resetAuctionData,
-    payAuction,
+    payOrder,
   };
 
   return (

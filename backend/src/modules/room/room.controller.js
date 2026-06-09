@@ -55,9 +55,8 @@ async function getRoom(req, res) {
 async function getRoomDisplayState(req, res) {
   try {
     const { roomId } = req.params;
-    const auctionService = require('../auction/auction.service');
     
-    const displayState = await auctionService.getRoomDisplayState(parseInt(roomId, 10));
+    const displayState = await roomService.getRoomDisplayState(parseInt(roomId, 10));
 
     res.json({
       code: 0,

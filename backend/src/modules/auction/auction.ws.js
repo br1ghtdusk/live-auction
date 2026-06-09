@@ -1,12 +1,8 @@
 const eventBus = require('./event-bus.js');
 const logger = require('../../utils/logger.js');
 const wss = require('../../infrastructure/wss.js');
-
-let auctionService = null;
-
-function setAuctionService(service) {
-    auctionService = service;
-}
+const roomService = require('../room/room.service.js');
+const auctionService = require('./auction.service.js');
 
 async function handleConnection(ws, roomId) {
     if (typeof roomId !== 'number' || isNaN(roomId) || roomId <= 0) {
@@ -16,7 +12,7 @@ async function handleConnection(ws, roomId) {
     }
 
     try {
-        const displayState = await auctionService.getRoomDisplayState(roomId);
+        const displayState = await roomService.getRoomDisplayState(roomId);
         ws.send(JSON.stringify({
             type: 'room_display',
             data: displayState
@@ -84,7 +80,6 @@ function init() {
 
 module.exports = {
     init,
-    setAuctionService,
     handleConnection,
     handleMessage
 };

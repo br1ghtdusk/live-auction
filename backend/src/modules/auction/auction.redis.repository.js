@@ -155,7 +155,8 @@ async function removeAuctionKeys(id) {
         constants.REDIS_KEYS.getDetailKey(id),
         constants.REDIS_KEYS.getBidsZSetKey(id),
         constants.REDIS_KEYS.getBidLockKey(id),
-        constants.REDIS_KEYS.getHighestBidKey(id)
+        constants.REDIS_KEYS.getHighestBidKey(id),
+        constants.REDIS_KEYS.getLeaderboardZSetKey(id)  // 新增：删除排行榜 ZSET
     ];
     if (keys.length > 0) {
         await client.del(keys);
@@ -218,6 +219,83 @@ async function getPaymentStatus(auctionId) {
     return status || null;
 }
 
+// ============ 排行榜 ZSET 操作 ============
+
+/**
+ * 更新排行榜：将用户出价添加到 ZSET
+ * @param {number} auctionId - 拍品ID
+ * @param {number} userId - 用户ID
+ * @param {number} bidAmount - 出价金额
+ */
+async function updateLeaderboard(auctionId, userId, bidAmount) {
+    const key = constants.REDIS_KEYS.getLeaderboardZSetKey(auctionId);
+    const client = redis.getClient();
+    // ZADD：如果用户已存在，更新其出价（score）
+    await client.zAdd(key, {
+        score: bidAmount,
+        value: String(userId)
+    });
+}
+
+/**
+ * 获取排行榜前 N 名
+ * @param {number} auctionId - 拍品ID
+ * @param {number} limit - 返回数量，默认10
+ * @returns {Array} - [{ userId, bidAmount }, ...]
+ */
+async function getLeaderboardFromRedis(auctionId, limit = 10) {
+    const key = constants.REDIS_KEYS.getLeaderboardZSetKey(auctionId);
+    const client = redis.getClient();
+    
+    // redis v4 语法：使用 zRange 配合 REV: true 实现倒序，WITH_SCORES 获取分数
+    const result = await client.zRange(key, 0, limit - 1, { REV: true, WITH_SCORES: true });
+    
+    // result 格式为 [userId1, score1, userId2, score2, ...]，需要扁平化处理
+    const leaderboard = [];
+    for (let i = 0; i < result.length; i += 2) {
+        leaderboard.push({
+            userId: parseInt(result[i], 10),
+            bidAmount: parseFloat(result[i + 1])
+        });
+    }
+    
+    return leaderboard;
+}
+
+/**
+ * 获取排行榜参与人数
+ * @param {number} auctionId - 拍品ID
+ * @returns {number} - 参与人数
+ */
+async function getLeaderboardCount(auctionId) {
+    const key = constants.REDIS_KEYS.getLeaderboardZSetKey(auctionId);
+    const client = redis.getClient();
+    const count = await client.zCard(key);
+    return count || 0;
+}
+
+/**
+ * 检查排行榜是否存在
+ * @param {number} auctionId - 拍品ID
+ * @returns {boolean} - 是否存在
+ */
+async function leaderboardExists(auctionId) {
+    const key = constants.REDIS_KEYS.getLeaderboardZSetKey(auctionId);
+    const client = redis.getClient();
+    const count = await client.zCard(key);
+    return count > 0;
+}
+
+/**
+ * 删除排行榜
+ * @param {number} auctionId - 拍品ID
+ */
+async function removeLeaderboard(auctionId) {
+    const key = constants.REDIS_KEYS.getLeaderboardZSetKey(auctionId);
+    const client = redis.getClient();
+    await client.del(key);
+}
+
 module.exports = {
     flushAll,
     save,
@@ -232,5 +310,10 @@ module.exports = {
     releaseLock,
     executeBidLua,
     setPaymentStatus,
-    getPaymentStatus
+    getPaymentStatus,
+    updateLeaderboard,
+    getLeaderboardFromRedis,
+    getLeaderboardCount,
+    leaderboardExists,
+    removeLeaderboard
 };

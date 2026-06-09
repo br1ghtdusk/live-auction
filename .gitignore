@@ -166,3 +166,7 @@ skills-lock.json
 .env
 .env.*
 !.env.example
+bid-report100.json
+ws-report1000.json
+stress-tests/bid.yml
+stress-tests/ws-connect.yml
