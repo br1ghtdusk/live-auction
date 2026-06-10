@@ -1,4 +1,20 @@
 services:
+
+  client:
+    image: nginx:alpine
+    container_name: auction-client
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend-client/dist:/usr/share/nginx/html
+
+  admin:
+    image: nginx:alpine
+    container_name: auction-admin
+    ports:
+      - "8080:80"
+    volumes:
+      - ./frontend-admin/dist:/usr/share/nginx/html
   mysql:
     image: mysql:8.0.42
     container_name: auction-mysql

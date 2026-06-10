@@ -170,17 +170,17 @@ npm install
 ```env
 # 服务器配置
 PORT=3000
-HOST=localhost
+HOST=118.196.28.152
 
 # MySQL 配置
-DB_HOST=localhost
+DB_HOST=118.196.28.152
 DB_PORT=3306
 DB_NAME=auction
 DB_USER=root
 DB_PASSWORD=your_password
 
 # Redis 配置
-REDIS_HOST=localhost
+REDIS_HOST=118.196.28.152
 REDIS_PORT=6379
 REDIS_PASSWORD=
 
@@ -254,7 +254,7 @@ Docker 环境下无需修改 `.env`，`docker-compose.yml` 已配置：
 前端通过以下地址连接 WebSocket：
 
 ```
-ws://localhost:3000/?roomId={roomId}
+ws://118.196.28.152:3000/?roomId={roomId}
 ```
 
 ### 事件类型
