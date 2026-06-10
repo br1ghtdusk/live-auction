@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig, type AxiosResponse, type AxiosError } from 'axios';
 import { message } from 'antd';
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081/api';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://118.196.28.152:8081/api';
 
 export interface ApiResponse<T = unknown> {
   code: number;
