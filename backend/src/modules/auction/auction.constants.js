@@ -23,7 +23,8 @@ const REDIS_KEYS = {
     getHighestBidKey: (id) => `auction:${id}:highest_bid`,
     getPaymentStatusKey: (id) => `auction:${id}:payment_status`,
     getPaymentTimeoutKey: (id) => `auction:${id}:payment_timeout`,
-    getLeaderboardZSetKey: (id) => `auction:${id}:leaderboard`  // 新增：排行榜 ZSET
+    getLeaderboardZSetKey: (id) => `auction:${id}:leaderboard`,  // 排行榜 ZSET
+    getLeaderboardWarmedKey: (id) => `auction:${id}:leaderboard:warmed`  // 排行榜预热标记
 };
 
 const WS_EVENTS = {

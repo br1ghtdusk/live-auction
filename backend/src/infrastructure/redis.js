@@ -20,4 +20,13 @@ function getClient() {
     return client;
 }
 
-module.exports = { connect, getClient };
+async function disconnect() {
+    if (!client) return;
+
+    if (client.isOpen) {
+        await client.quit();
+        logger.info('[Redis] Redis连接已关闭');
+    }
+}
+
+module.exports = { connect, getClient, disconnect };

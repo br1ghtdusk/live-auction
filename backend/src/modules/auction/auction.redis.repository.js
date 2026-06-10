@@ -280,10 +280,21 @@ async function getLeaderboardCount(auctionId) {
  * @returns {boolean} - 是否存在
  */
 async function leaderboardExists(auctionId) {
-    const key = constants.REDIS_KEYS.getLeaderboardZSetKey(auctionId);
+    const key = constants.REDIS_KEYS.getLeaderboardWarmedKey(auctionId);
     const client = redis.getClient();
-    const count = await client.zCard(key);
-    return count > 0;
+    const exists = await client.exists(key);
+    return exists === 1;
+}
+
+/**
+ * 设置排行榜预热标记
+ * @param {number} auctionId - 拍品ID
+ * @param {number} ttlSeconds - 过期时间（秒），默认1小时
+ */
+async function setLeaderboardWarmed(auctionId, ttlSeconds = 3600) {
+    const key = constants.REDIS_KEYS.getLeaderboardWarmedKey(auctionId);
+    const client = redis.getClient();
+    await client.set(key, '1', { EX: ttlSeconds });
 }
 
 /**
@@ -315,5 +326,6 @@ module.exports = {
     getLeaderboardFromRedis,
     getLeaderboardCount,
     leaderboardExists,
+    setLeaderboardWarmed,
     removeLeaderboard
 };

@@ -355,6 +355,13 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
         const data = JSON.parse(event.data);
         console.log('[WS] Received message:', data.type, data.data);
 
+        // 调试：检查 price_update 事件是否进入
+        if (data.type === 'price_update') {
+          console.log('[WS Debug] 进入 price_update 处理分支');
+          console.log('[WS Debug] priceData:', data.data);
+          console.log('[WS Debug] currentPrice:', data.data?.currentPrice);
+        }
+
         switch (data.type) {
           case 'room_display': {
             const { mode, auction, bidderCount } = data.data;
@@ -383,6 +390,10 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
             setSubmitting(false);
 
             const priceData = data.data;
+            console.log('[AuctionStore] 收到 price_update 事件:', JSON.stringify(priceData, null, 2));
+            console.log('[AuctionStore] currentPrice:', priceData.currentPrice);
+            console.log('[AuctionStore] highestBidderId:', priceData.highestBidderId);
+            
             if (priceData.bidderCount !== undefined) setBidderCount(priceData.bidderCount);
             if (priceData.leaderboardList) setLeaderboard(priceData.leaderboardList);
 
@@ -410,8 +421,12 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
             setBidsList((prev) => [newBid, ...prev].slice(0, 50));
             
             // 同步更新当前拍品状态，确保价格与后端一致
+            console.log('[AuctionStore] 更新 currentAuction 前: current_price=', currentAuctionRef.current?.current_price);
             setCurrentAuction((prev) => {
-              if (!prev) return null;
+              if (!prev) {
+                console.log('[AuctionStore] currentAuction 为 null，跳过更新');
+                return null;
+              }
               const updated = {
                 ...prev,
                 current_price: priceData.currentPrice,
@@ -419,6 +434,7 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
                 scheduled_end_time: priceData.endTime ?? prev.scheduled_end_time,
                 extend_count: priceData.extendCount ?? prev.extend_count,
               };
+              console.log('[AuctionStore] 更新 currentAuction 后: current_price=', updated.current_price);
               // 立即同步 Ref，避免 React State 异步更新导致的竞态问题
               currentAuctionRef.current = updated;
               return updated;

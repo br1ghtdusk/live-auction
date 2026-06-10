@@ -74,7 +74,7 @@ function setupGracefulShutdown(server) {
             });
 
             logger.info('[Server Master] 步骤5: 断开 Redis 连接...');
-            await redis.quit().catch((err) => {
+            await redis.disconnect().catch((err) => {
                 logger.warn('[Server Master] 断开 Redis 连接时发生错误:', err);
             });
 

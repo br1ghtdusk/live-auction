@@ -17,6 +17,9 @@ export const PricePanel: React.FC<PricePanelProps> = React.memo(({
   bidIncrement,
   status,
 }) => {
+  // 调试：监控 currentPrice 变化
+  console.log('[PricePanel] Render:', { currentPrice, status });
+  
   if (status === 'FAILED') {
     return (
       <div className="price-section-failed">

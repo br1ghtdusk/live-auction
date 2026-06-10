@@ -159,6 +159,9 @@ async function placeBid(roomId, auctionId, data) {
             return { success: false, reason: 'internal_error' };
         }
 
+        // 提前定义 currentPrice，使其在 syncToMySQL 外部也能访问
+        const currentPrice = updatedAuction.current_price;
+
         async function syncToMySQL() {
             const updatedAt = time.formatTimeForMySQL(now);
             
@@ -170,7 +173,6 @@ async function placeBid(roomId, auctionId, data) {
                 }
 
                 const version = mysqlAuction.version;
-                const currentPrice = updatedAuction.current_price;
                 const highestBidderId = updatedAuction.highest_bidder_id;
                 const scheduledEndTime = updatedAuction.scheduled_end_time;
 
@@ -642,6 +644,9 @@ async function warmupLeaderboardFromMySQL(auctionId) {
         });
     }
     
+    // 设置预热标记（无论是否有数据都设置，防止空ZSET导致的死循环）
+    await redisRepo.setLeaderboardWarmed(auctionId, 3600); // 1小时过期
+    
     logger.info(`[Leaderboard] 预热完成: auctionId=${auctionId}, count=${records.length}`);
 }
 
@@ -659,17 +664,17 @@ async function getLeaderboard(auctionId) {
         await warmupLeaderboardFromMySQL(auctionId);
     }
     
-    // 2. 从 Redis ZSET 获取前10名
+    // 2. 从 Redis ZSET 获取前 10 名
     const leaderboardData = await redisRepo.getLeaderboardFromRedis(auctionId, 10);
     const bidderCount = await redisRepo.getLeaderboardCount(auctionId);
     
-    // 3. 构建返回数据（用户信息可以后续从缓存或 MySQL 批量获取）
+    // 3. 构建返回数据
     return {
         list: leaderboardData.map(item => ({
             userId: item.userId,
             username: `用户${item.userId}`,
-            maxBidAmount: item.bidAmount,
-            bidCount: 1  // Redis ZSET 只存储最高出价，bidCount 需要从 MySQL 查询
+            maxBidAmount: item.bidAmount,  
+            bidCount: 1  
         })),
         bidderCount
     };

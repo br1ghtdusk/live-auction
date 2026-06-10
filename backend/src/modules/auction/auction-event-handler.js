@@ -13,6 +13,9 @@ function setWss(wsModule) {
 
 function handlePriceUpdate(data) {
     if (!wss) return;
+    
+    logger.info(`[EventHandler] 收到 PRICE_CHANGED 事件，准备广播: roomId=${data.roomId}, currentPrice=${data.currentPrice}`);
+    
     wss.broadcast(data.roomId, {
         type: WS_EVENTS.PRICE_CHANGED,
         data: {
@@ -24,6 +27,8 @@ function handlePriceUpdate(data) {
             leaderboardList: data.leaderboardList
         }
     });
+    
+    logger.info(`[EventHandler] PRICE_CHANGED 广播完成: roomId=${data.roomId}`);
 }
 
 async function handleAuctionEnded(data) {

@@ -56,9 +56,9 @@ export interface RoomDisplayStateResponse {
   };
 }
 
-export interface PayAuctionResponse {
+export interface PayOrderResponse {
   success: boolean;
-  code?: number;
+  code?: number | string;
   message?: string;
 }
 
@@ -98,7 +98,7 @@ export const auctionApi = {
   },
 
   // 支付订单
-  payOrder: async (auctionId: number, userId: number): Promise<PayAuctionResponse> => {
+  payOrder: async (auctionId: number, userId: number): Promise<PayOrderResponse> => {
     try {
       const response = await api.post(`/api/pay`, {
         auctionId,

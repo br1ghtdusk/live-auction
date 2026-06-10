@@ -43,6 +43,13 @@ const LiveView = () => {
   const [countdownLabel, setCountdownLabel] = useState<string>('剩余时间');
   const countdownRef = useRef<number | null>(null);
 
+  // 💡 统一将历史/实时时间戳格式化为本地24小时制 (如 14:53:06)
+  const formatBidTime = (timeVal: any) => {
+    if (!timeVal) return '';
+    const date = new Date(timeVal);
+    return isNaN(date.getTime()) ? String(timeVal) : date.toLocaleTimeString('zh-CN', { hour12: false });
+  };
+
   // 清理倒计时
   const clearCountdown = useCallback(() => {
     if (countdownRef.current) {
@@ -51,9 +58,8 @@ const LiveView = () => {
     }
   }, []);
 
-  // 倒计时逻辑（局部心跳，不走 Context）
+  // 倒计时逻辑
   useEffect(() => {
-    // 非 ACTIVE 模式，停止倒计时
     if (roomDisplayMode !== 'ACTIVE' || !currentAuction) {
       setCountdownText('00:00:00');
       setCountdownLabel('剩余时间');
@@ -244,7 +250,8 @@ const LiveView = () => {
                   <div className="py-2 flex justify-between items-center">
                     <div>
                       <div style={{ fontWeight: 'bold' }}>{`用户 ${record.userId}`}</div>
-                      <div style={{ color: '#666', fontSize: '12px' }}>{`出价时间: ${record.time}`}</div>
+                      {/* 💡 使用统一的时间格式化函数 */}
+                      <div style={{ color: '#666', fontSize: '12px' }}>{`出价时间: ${formatBidTime(record.time)}`}</div>
                     </div>
                     <div style={{ color: '#ff4d4f', fontWeight: 'bold' }}>{`¥${record.amount}.00`}</div>
                   </div>
@@ -265,12 +272,20 @@ const AuctionConsoleContent = () => {
   const merchantId = localStorage.getItem('merchantId');
 
   const {
+    roomDisplayMode,
     currentAuction,
     setRoomDisplay,
     initBidsList,
     appendNewBid,
     resetStore,
   } = useConsoleStore();
+
+  // 💡 斩断死循环核心：用 Ref 缓存最新的状态数据，使其在 render 期间同步更新，但绝对不打扰 useCallback 的引用稳定性！
+  const currentAuctionRef = useRef(currentAuction);
+  const roomDisplayModeRef = useRef(roomDisplayMode);
+  
+  currentAuctionRef.current = currentAuction;
+  roomDisplayModeRef.current = roomDisplayMode;
 
   const [roomOptions, setRoomOptions] = useState<{ value: number; label: string }[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<number | null>(null);
@@ -339,13 +354,24 @@ const AuctionConsoleContent = () => {
 
         case 'price_update': {
           const priceData = data.data;
+          
+          // 💡 统一存储为完整的 ISO 字符串，依靠 LiveView 内的统一格式化器消除刷新时间差异
           const newBid: BidRecord = {
             id: Date.now(),
             userId: priceData.highestBidderId,
             amount: priceData.currentPrice / 100,
-            time: new Date().toLocaleTimeString(),
+            time: new Date().toISOString(), 
           };
           appendNewBid(newBid);
+
+          // 💡 核心修复：通过 Ref 读取旧拍卖快照，杜绝在依赖项中放入 state 变量
+          if (currentAuctionRef.current) {
+            setRoomDisplay(roomDisplayModeRef.current, {
+              ...currentAuctionRef.current,
+              current_price: priceData.currentPrice,
+              highest_bidder_id: priceData.highestBidderId,
+            });
+          }
           break;
         }
 
@@ -358,7 +384,8 @@ const AuctionConsoleContent = () => {
     } catch (error) {
       console.error('消息解析错误:', error);
     }
-  }, [setRoomDisplay, fetchBidHistory, appendNewBid]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setRoomDisplay, fetchBidHistory, appendNewBid]); // 💡 彻底清空动态依赖，函数引用永不改变，断绝重连死循环！
 
   // 自动连接 WebSocket
   useEffect(() => {

@@ -64,7 +64,7 @@ async function payOrder(req, res) {
             message: result.message
         });
     } catch (error) {
-        console.error('[Order Controller] payAuction 失败:', error);
+        console.error('[Order Controller] payOrder 失败:', error);
         return res.status(500).json({
             success: false,
             code: 500,
@@ -75,5 +75,5 @@ async function payOrder(req, res) {
 
 module.exports = {
     getMerchantOrders,
-    payAuction
+    payOrder,
 };
