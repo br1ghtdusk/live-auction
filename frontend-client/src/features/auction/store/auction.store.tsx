@@ -1,7 +1,8 @@
 import { createContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import { Flame, AlertCircle, PartyPopper } from 'lucide-react';
+import { Flame, AlertCircle, PartyPopper, Trophy, CheckCircle } from 'lucide-react';
 import type { Auction } from '../types/auction.types';
+import type { AuctionStatus } from '../constants/auctionStatus';
 import { auctionApi } from '../services/auction.api';
 import { sanitizeAuctionData } from '../utils/sanitizeAuction';
 
@@ -483,6 +484,40 @@ export const AuctionProvider = ({ children, myUserId, roomId }: AuctionProviderP
               toast.success('支付成功！商品正在打包中', {
                 description: `成交价 ¥${(data.data.price / 100).toFixed(2)}`,
                 icon: <PartyPopper className="w-5 h-5 text-green-500" />,
+                duration: 5000,
+              });
+            }
+            break;
+          }
+
+          case 'auction_ended': {
+            console.log('[WS] 收到竞拍结束通知:', data.data);
+            const { winnerId, finalPrice, status } = data.data;
+
+            // 更新当前拍品状态
+            setCurrentAuction((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                status: status as AuctionStatus,
+                current_price: finalPrice,
+                highest_bidder_id: winnerId,
+              };
+            });
+
+            // 如果我是获胜者，设置支付状态为待支付
+            if (myUserId === winnerId) {
+              setPaymentStatusState('pending');
+              toast.success('恭喜您竞拍成功！', {
+                description: `成交价 ¥${(finalPrice / 100).toFixed(2)}，请在 60 秒内完成支付`,
+                icon: <Trophy className="w-5 h-5 text-yellow-500" />,
+                duration: 60000, // 显示 60 秒
+              });
+            } else {
+              // 如果我不是获胜者，显示竞拍结束信息
+              toast.info('竞拍已结束', {
+                description: `成交价 ¥${(finalPrice / 100).toFixed(2)}`,
+                icon: <CheckCircle className="w-5 h-5 text-blue-500" />,
                 duration: 5000,
               });
             }

@@ -100,7 +100,7 @@ export const auctionApi = {
   // 支付订单
   payOrder: async (auctionId: number, userId: number): Promise<PayOrderResponse> => {
     try {
-      const response = await api.post(`/api/pay`, {
+      const response = await api.post(`/api/merchant/pay`, {
         auctionId,
         userId,
       });

@@ -392,7 +392,11 @@ const AuctionConsoleContent = () => {
     if (selectedRoom === null || roomsLoading) return;
 
     resetStore();
-    const ws = new WebSocket(`ws://118.196.28.152:8081?roomId=${selectedRoom}`);
+    const protocol =
+    window.location.protocol === "https:" ? "wss://" : "ws://";
+    const ws = new WebSocket(
+    `${protocol}${window.location.hostname}:8081?roomId=${selectedRoom}`
+    );
 
     ws.onopen = () => {
       setIsConnected(true);
@@ -432,7 +436,7 @@ const AuctionConsoleContent = () => {
   // 查看直播间画面
   const handleViewLive = () => {
     if (selectedRoom) {
-      window.open(`http://118.196.28.152:5173/?roomId=${selectedRoom}`, '_blank', 'width=375,height=812');
+      window.open(`http://${window.location.hostname}/?roomId=${selectedRoom}`,"_blank","width=375,height=812");
     }
   };
 

@@ -161,8 +161,8 @@ skills-lock.json
 
 # Monorepo Subproject Ignores
 **/node_modules/
-**/dist/
-**/build/
+#**/dist/
+#**/build/
 .env
 .env.*
 !.env.example

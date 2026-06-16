@@ -260,7 +260,7 @@ async function findLeaderboardByAuctionId(auctionId) {
          WHERE auction_id = ?
          GROUP BY user_id
          ORDER BY maxBidAmount DESC
-         LIMIT 5`,
+         LIMIT 10`,
         [auctionId]
     );
     return rows;

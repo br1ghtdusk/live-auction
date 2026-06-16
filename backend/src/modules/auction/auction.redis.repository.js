@@ -53,8 +53,10 @@ const BID_LUA_SCRIPT = `
         return cjson.encode({success = false, reason = 'bid_too_low', requiredMinBid = minValidBid})
     end
 
-    if ceilingPrice > 0 and bidAmount > ceilingPrice then
-        return cjson.encode({success = false, reason = 'exceeds_ceiling', requiredMaxBid = ceilingPrice})
+    local isCeilingReached = false
+    if ceilingPrice > 0 and bidAmount >= ceilingPrice then
+        bidAmount = ceilingPrice
+        isCeilingReached = true
     end
 
     local isSold = false
@@ -62,7 +64,7 @@ const BID_LUA_SCRIPT = `
     local newExtendCount = extendCount
     local newStatus = status
 
-    if ceilingPrice > 0 and bidAmount >= ceilingPrice then
+    if isCeilingReached then
         isSold = true
         newStatus = 'SOLD'
         newEndTime = now
@@ -246,20 +248,20 @@ async function updateLeaderboard(auctionId, userId, bidAmount) {
 async function getLeaderboardFromRedis(auctionId, limit = 10) {
     const key = constants.REDIS_KEYS.getLeaderboardZSetKey(auctionId);
     const client = redis.getClient();
-    
-    // redis v4 语法：使用 zRange 配合 REV: true 实现倒序，WITH_SCORES 获取分数
-    const result = await client.zRange(key, 0, limit - 1, { REV: true, WITH_SCORES: true });
-    
-    // result 格式为 [userId1, score1, userId2, score2, ...]，需要扁平化处理
-    const leaderboard = [];
-    for (let i = 0; i < result.length; i += 2) {
-        leaderboard.push({
-            userId: parseInt(result[i], 10),
-            bidAmount: parseFloat(result[i + 1])
-        });
-    }
-    
-    return leaderboard;
+
+    const result = await client.zRangeWithScores(
+        key,
+        0,
+        limit - 1,
+        {
+            REV: true
+        }
+    );
+
+    return result.map(item => ({
+        userId: Number(item.value),
+        bidAmount: Number(item.score)
+    }));
 }
 
 /**
